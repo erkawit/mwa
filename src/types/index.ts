@@ -33,6 +33,7 @@ export interface UserAccount {
   status: 'active' | 'suspended' | 'pending';
   password?: string;
   createdAt: number;
+  isPremium?: boolean;
 }
 
 export interface UserSession {
@@ -43,6 +44,7 @@ export interface UserSession {
   avatar?: string;
   role: UserRole;
   provider: 'local' | 'google' | 'firebase';
+  isPremium?: boolean;
 }
 
 export interface DonationConfig {

@@ -24,6 +24,7 @@ interface MediaCanvasProps {
   activeVideoClips?: TimelineClip[];
   selectedClipId: string | null;
   projectSettings: ProjectSettings;
+  isPremium?: boolean;
   onTogglePlay: () => void;
   onSeek: (time: number) => void;
   onSelectClip: (clipId: string | null) => void;
@@ -39,6 +40,7 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
   activeVideoClips = [],
   selectedClipId,
   projectSettings,
+  isPremium = false,
   onTogglePlay,
   onSeek,
   onSelectClip,
@@ -385,6 +387,13 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
           <div className="absolute top-2.5 right-2.5 px-2 py-1 bg-black/60 backdrop-blur-md text-emerald-400 font-mono text-[11px] rounded border border-white/10 select-none z-10">
             {formatTimecode(currentTime)}
           </div>
+
+          {/* Watermark "MWA" for Normal Users (Bottom Right) */}
+          {!isPremium && (
+            <div className="absolute bottom-3 right-3 px-2 py-0.5 bg-black/40 backdrop-blur-xs text-white/80 font-black font-sans text-sm tracking-wider rounded border border-white/20 select-none pointer-events-none z-10 drop-shadow-md">
+              MWA
+            </div>
+          )}
         </div>
       </div>
 

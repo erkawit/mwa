@@ -48,11 +48,9 @@ const initialFolders: MediaFolder[] = [];
 const initialAssets: MediaAsset[] = [];
 const initialClips: TimelineClip[] = [];
 
-// Initial Tracks
+// Initial Tracks (Requirement 2: Exactly 1 blank track on new project)
 const initialTracks: TimelineTrack[] = [
-  { id: 'trk-text', name: 'ข้อความ & ไตเติ้ล (Text 1)', type: 'text', muted: false, locked: false, solo: false },
-  { id: 'trk-video', name: 'ภาพ & วิดีโอหลัก (Video 1)', type: 'video', muted: false, locked: false, solo: false },
-  { id: 'trk-audio', name: 'เสียง & ดนตรี (Audio 1)', type: 'audio', muted: false, locked: false, solo: false },
+  { id: 'trk-video-1', name: 'วิดีโอ & มีเดีย (Track 1)', type: 'video', muted: false, locked: false, solo: false },
 ];
 
 // Storage Keys for Refresh Persistence (Requirement 1)
@@ -598,7 +596,20 @@ export function App() {
     );
   };
 
+  const isPremium = userSession?.isPremium === true || userSession?.role === 'admin';
+
   const handleAddTrack = (type: MediaType) => {
+    const maxTracks = isPremium ? 10 : 3;
+    if (tracks.length >= maxTracks) {
+      alertError(
+        'ถึงขีดจำกัดจำนวนแทร็ก',
+        isPremium
+          ? `สมาชิก Premium สามารถสร้าง Track Editor ได้สูงสุด ${maxTracks} แทร็ก`
+          : `ผู้ใช้งานทั่วไปสามารถสร้าง Track Editor ได้สูงสุด ${maxTracks} แทร็ก (กรุณาอัปเกรดเป็น Premium เพื่อสร้างได้สูงสุด 10 แทร็ก)`
+      );
+      return;
+    }
+
     const typeLabel = type === 'video' ? 'Video' : type === 'audio' ? 'Audio' : 'Text';
     const newTrack: TimelineTrack = {
       id: `trk-${Date.now()}`,
@@ -709,6 +720,7 @@ export function App() {
               totalDuration: Math.max(1, totalDuration),
               format,
               quality,
+              isPremium,
               onProgress: (prog) => {
                 const bar = document.getElementById('export-progress-bar');
                 const pText = document.getElementById('export-progress-text');
@@ -790,12 +802,16 @@ export function App() {
         resolution: newP.resolution,
         fps: newP.fps,
       });
-      // Start with clean empty state (No dummy sample files)
+      // Start with clean empty state: Exactly 1 blank track (Requirement 2)
+      setTracks([
+        { id: `trk-video-${Date.now()}`, name: 'วิดีโอ & มีเดีย (Track 1)', type: 'video', muted: false, locked: false, solo: false },
+      ]);
       setAssets([]);
       setClips([]);
       setFolders([]);
       setActiveAssetId(null);
       setSelectedClipId(null);
+      setFocusedTrackId(null);
       // Auto launch Interactive Studio Guide Tour
       setIsTourOpen(true);
     }
@@ -917,6 +933,7 @@ export function App() {
           selectedClip={selectedClip}
           customFonts={customFonts}
           userId={userSession?.id}
+          isPremium={isPremium}
           onSelectAsset={handleSelectAssetSync}
           onAddAsset={handleAddAsset}
           onDeleteAsset={handleDeleteAsset}
@@ -947,6 +964,7 @@ export function App() {
           activeVideoClips={activeVideoClips}
           selectedClipId={selectedClipId}
           projectSettings={projectSettings}
+          isPremium={isPremium}
           onTogglePlay={handleTogglePlay}
           onSeek={handleSeek}
           onSelectClip={handleSelectClipSync}
@@ -991,6 +1009,7 @@ export function App() {
         onAddTextClip={handleAddTextClip}
         onEditTextClip={setEditingTextClip}
         onReplaceClipMedia={handleReplaceClipMedia}
+        onUpdateClipTransition={handleUpdateClipTransition}
       />
 
       {/* Text & Font Effects Editor Modal */}

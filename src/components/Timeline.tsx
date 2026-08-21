@@ -14,7 +14,7 @@ import {
   Zap,
   Link2
 } from 'lucide-react';
-import type { TimelineClip, TimelineTrack, MediaType } from '../types';
+import type { TimelineClip, TimelineTrack, MediaType, TransitionType } from '../types';
 import { AppSwal, alertConfirm } from '../utils/swal';
 
 interface TimelineProps {
@@ -41,6 +41,7 @@ interface TimelineProps {
   onAddTextClip: () => void;
   onEditTextClip: (clip: TimelineClip) => void;
   onReplaceClipMedia?: (clipId: string, file: File) => void;
+  onUpdateClipTransition?: (clipId: string, transition: TransitionType) => void;
 }
 
 interface SnapTarget {
@@ -74,6 +75,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   onAddTextClip,
   onEditTextClip,
   onReplaceClipMedia,
+  onUpdateClipTransition,
 }) => {
   const [zoom, setZoom] = useState(40); // Pixels per second
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -432,6 +434,42 @@ export const Timeline: React.FC<TimelineProps> = ({
     }
   };
 
+  const handleOpenTransitionPicker = async (clip: TimelineClip) => {
+    const transitions: { id: TransitionType; label: string; icon: string }[] = [
+      { id: 'none', label: 'ไม่มี (None)', icon: '🚫' },
+      { id: 'cross-dissolve', label: 'ละลายจาง (Cross Dissolve)', icon: '✨' },
+      { id: 'fade-black', label: 'จางลงดำ (Fade to Black)', icon: '🌑' },
+      { id: 'fade-in', label: 'Fade In (ค่อยๆ ปรากฏ)', icon: '🌟' },
+      { id: 'fade-out', label: 'Fade Out (ค่อยๆ จางดับ)', icon: '🌙' },
+      { id: 'slide-left', label: 'สไลด์ซ้าย (Slide Left)', icon: '⬅️' },
+      { id: 'slide-right', label: 'สไลด์ขวา (Slide Right)', icon: '➡️' },
+      { id: 'zoom-in', label: 'ซูมเข้า (Zoom In)', icon: '🔍' },
+      { id: 'wipe', label: 'กวาดภาพ (Wipe)', icon: '🧹' },
+      { id: 'glitch', label: 'กลิตช์ดิจิทัล (Glitch FX)', icon: '⚡' },
+      { id: 'blur', label: 'เบลอเปลี่ยนฉาก (Blur)', icon: '🌫️' },
+    ];
+
+    const inputOptions = transitions.reduce((acc, curr) => {
+      acc[curr.id] = `${curr.icon} ${curr.label}`;
+      return acc;
+    }, {} as Record<string, string>);
+
+    const { value: selectedTrans } = await AppSwal.fire({
+      title: 'เลือก Transition รอยต่อระหว่างคลิป',
+      text: `กำหนดเอฟเฟกต์เปลี่ยนผ่านสำหรับคลิป "${clip.name}"`,
+      input: 'select',
+      inputOptions,
+      inputValue: clip.transition || 'cross-dissolve',
+      showCancelButton: true,
+      confirmButtonText: 'บันทึก Transition',
+      cancelButtonText: 'ยกเลิก',
+    });
+
+    if (selectedTrans && onUpdateClipTransition) {
+      onUpdateClipTransition(clip.id, selectedTrans as TransitionType);
+    }
+  };
+
   return (
     <div 
       style={{ height: `${timelineHeight}px` }}
@@ -644,6 +682,7 @@ export const Timeline: React.FC<TimelineProps> = ({
             <div className="divide-y divide-slate-200">
               {tracks.map((track) => {
                 const trackClips = clips.filter((c) => c.trackId === track.id);
+                const sortedTrackClips = [...trackClips].sort((a, b) => a.startTime - b.startTime);
                 const isFocused = focusedTrackId === track.id;
 
                 return (
@@ -800,6 +839,43 @@ export const Timeline: React.FC<TimelineProps> = ({
                           >
                             <div className="w-[1px] h-3 bg-white mx-auto my-auto mt-2"></div>
                           </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Transition [+] Junction Button between adjacent clips (Requirement 1) */}
+                    {sortedTrackClips.map((clipA, idx) => {
+                      if (idx === sortedTrackClips.length - 1) return null;
+                      const clipB = sortedTrackClips[idx + 1];
+                      const junctionX = (clipA.startTime + clipA.duration) * zoom;
+                      const hasTransition = clipB.transition && clipB.transition !== 'none';
+
+                      return (
+                        <div
+                          key={`trans-junc-${clipA.id}-${clipB.id}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenTransitionPicker(clipB);
+                          }}
+                          style={{
+                            left: `${junctionX - 12}px`,
+                          }}
+                          title={
+                            hasTransition
+                              ? `Transition: ${clipB.transition} (คลิกเพื่อแก้ไข/เปลี่ยน)`
+                              : 'คลิกเพื่อเพิ่ม Animation Transition รอยต่อระหว่างคลิป'
+                          }
+                          className={`absolute top-4 z-30 w-6 h-6 rounded-full flex items-center justify-center cursor-pointer transition-all shadow-md group/trans ${
+                            hasTransition
+                              ? 'bg-indigo-600 text-white ring-2 ring-white hover:scale-115 animate-in fade-in'
+                              : 'bg-white border-2 border-indigo-500 text-indigo-600 hover:bg-indigo-50 hover:scale-115 opacity-0 hover:!opacity-100 group-hover/track:opacity-90'
+                          }`}
+                        >
+                          {hasTransition ? (
+                            <Zap className="w-3 h-3 text-amber-300 fill-amber-300" />
+                          ) : (
+                            <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                          )}
                         </div>
                       );
                     })}

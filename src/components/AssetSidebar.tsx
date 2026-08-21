@@ -41,6 +41,7 @@ interface AssetSidebarProps {
   selectedClip?: TimelineClip | null;
   customFonts?: CustomFont[];
   userId?: string;
+  isPremium?: boolean;
   onSelectAsset: (asset: MediaAsset) => void;
   onAddAsset: (newAsset: MediaAsset) => void;
   onDeleteAsset: (assetId: string) => void;
@@ -61,7 +62,8 @@ interface AssetSidebarProps {
   onUpdateClipMotion?: (clipId: string, motion: MotionAnimation) => void;
 }
 
-const MAX_VIDEO_SIZE = 4 * 1024 * 1024 * 1024; // 4 GB in bytes
+const PREMIUM_MAX_VIDEO_SIZE = 4 * 1024 * 1024 * 1024; // 4 GB in bytes
+const NORMAL_MAX_VIDEO_SIZE = 1 * 1024 * 1024 * 1024;  // 1 GB in bytes
 
 export const AssetSidebar: React.FC<AssetSidebarProps> = ({
   assets,
@@ -71,6 +73,7 @@ export const AssetSidebar: React.FC<AssetSidebarProps> = ({
   selectedClip,
   customFonts = [],
   userId,
+  isPremium = false,
   onSelectAsset,
   onAddAsset,
   onDeleteAsset,
@@ -117,9 +120,10 @@ export const AssetSidebar: React.FC<AssetSidebarProps> = ({
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   };
 
-  // Process Real File Upload
+  // Process Real File Upload (Condition 1: 4GB for Premium vs 1GB for Normal)
   const handleProcessFiles = async (files: FileList | File[]) => {
     const fileArray = Array.from(files);
+    const maxAllowedSize = isPremium ? PREMIUM_MAX_VIDEO_SIZE : NORMAL_MAX_VIDEO_SIZE;
 
     for (const file of fileArray) {
       let type: MediaType | null = null;
@@ -132,10 +136,12 @@ export const AssetSidebar: React.FC<AssetSidebarProps> = ({
         continue;
       }
 
-      if (type === 'video' && file.size > MAX_VIDEO_SIZE) {
+      if (file.size > maxAllowedSize) {
         alertError(
           'ขนาดไฟล์เกินขีดจำกัด',
-          `ไฟล์ "${file.name}" มีขนาด ${formatFileSize(file.size)} ซึ่งเกินขีดจำกัดที่กำหนดไว้สูงสุด 4 GB`
+          isPremium
+            ? `ไฟล์ "${file.name}" มีขนาด ${formatFileSize(file.size)} ซึ่งเกินขีดจำกัดสูงสุด 4 GB สำหรับสมาชิก Premium`
+            : `ไฟล์ "${file.name}" มีขนาด ${formatFileSize(file.size)} ซึ่งเกินขีดจำกัด 1 GB สำหรับผู้ใช้งานทั่วไป (กรุณาอัปเกรดเป็น Premium เพื่อรองรับไฟล์ขนาดสูงสุด 4 GB)`
         );
         continue;
       }

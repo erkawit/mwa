@@ -21,6 +21,7 @@ export interface RenderExportOptions {
   totalDuration: number;
   format: 'webm' | 'mp4';
   quality: 'Best' | 'Standard' | 'Fast';
+  isPremium?: boolean;
   onProgress: (prog: ExportProgress) => void;
 }
 
@@ -30,7 +31,7 @@ export interface RenderExportOptions {
  * using HTML5 Canvas, Web Audio API, and MediaRecorder without any server backend load.
  */
 export async function renderProjectOnClient(options: RenderExportOptions): Promise<Blob> {
-  const { projectSettings, clips, totalDuration, format: _format, quality, onProgress } = options;
+  const { projectSettings, clips, totalDuration, format: _format, quality, isPremium, onProgress } = options;
 
   // Determine export dimensions
   let width = 1920;
@@ -271,13 +272,24 @@ export async function renderProjectOnClient(options: RenderExportOptions): Promi
       ctx.restore();
     }
 
-    // Watermark / Studio Metadata (Bottom Right)
-    ctx.save();
-    ctx.font = `500 ${Math.round(width * 0.012)}px Prompt, sans-serif`;
-    ctx.fillStyle = 'rgba(148, 163, 184, 0.7)';
-    ctx.textAlign = 'right';
-    ctx.fillText(`⚡ Rendered on Client Device (Zero-Server CPU)`, width - 30, height - 25);
-    ctx.restore();
+    // Watermark "MWA" for Normal Users (Bottom Right)
+    if (!isPremium) {
+      ctx.save();
+      const wmText = 'MWA';
+      const wmFontSize = Math.round(width * 0.026);
+      ctx.font = `900 ${wmFontSize}px Prompt, sans-serif`;
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'bottom';
+      
+      // Outer drop shadow for clear contrast on all backgrounds
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillText(wmText, width - 38, height - 38);
+      
+      // Main watermark color
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.fillText(wmText, width - 40, height - 40);
+      ctx.restore();
+    }
 
     // Notify Progress to Caller
     const prog = Math.round(((frame + 1) / totalFrames) * 100);

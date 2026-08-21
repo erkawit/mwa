@@ -230,6 +230,14 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   };
 
   const handleCreateNewProject = () => {
+    const isPremium = userSession?.isPremium === true || userSession?.role === 'admin';
+    if (!isPremium && savedProjects.length >= 3) {
+      alertError(
+        'ถึงขีดจำกัดจำนวนโปรเจกต์',
+        `บัญชีผู้ใช้ทั่วไปสามารถสร้างโปรเจกต์ได้สูงสุด 3 โปรเจกต์ (ปัจจุบันคุณมี ${savedProjects.length} โปรเจกต์)\n\nกรุณาลบโปรเจกต์เดิมออก หรือติดต่อผู้ดูแลระบบเพื่ออัปเกรดเป็น Premium (สร้างได้ไม่จำกัด)`
+      );
+      return;
+    }
     onOpenProject();
   };
 

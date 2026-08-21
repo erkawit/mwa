@@ -56,6 +56,7 @@ class AuthService {
         role: 'admin',
         provider: 'local',
         avatar: '/logo.png',
+        isPremium: true,
       };
       this.currentSession = session;
       localStorage.setItem(SESSION_KEY, JSON.stringify(session));
@@ -96,6 +97,7 @@ class AuthService {
         role: registeredUser.role,
         provider: 'local',
         avatar: './logo.png',
+        isPremium: registeredUser.isPremium ?? (registeredUser.role === 'admin'),
       };
       this.currentSession = session;
       localStorage.setItem(SESSION_KEY, JSON.stringify(session));
@@ -117,10 +119,15 @@ class AuthService {
       avatar: googleUser.picture,
       role: 'editor',
       provider: 'google',
+      isPremium: false,
     };
     this.currentSession = session;
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
     return session;
+  }
+
+  public isPremiumUser(): boolean {
+    return this.currentSession?.isPremium === true || this.currentSession?.role === 'admin';
   }
 
   public updateProfile(name: string, email?: string, avatar?: string): UserSession | null {
