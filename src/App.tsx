@@ -980,6 +980,7 @@ export function App() {
           isPlaying={isPlaying}
           currentTime={currentTime}
           totalDuration={totalDuration}
+          assets={assets}
           activeAsset={activeAsset}
           activeTextClips={activeTextClips}
           activeVideoClips={activeVideoClips}

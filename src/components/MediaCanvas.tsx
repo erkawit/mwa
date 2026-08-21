@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { 
   Play, 
   Pause, 
@@ -19,6 +19,7 @@ interface MediaCanvasProps {
   isPlaying: boolean;
   currentTime: number;
   totalDuration: number;
+  assets?: MediaAsset[];
   activeAsset: MediaAsset | null;
   activeTextClips: TimelineClip[];
   activeVideoClips?: TimelineClip[];
@@ -35,6 +36,7 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
   isPlaying,
   currentTime,
   totalDuration,
+  assets = [],
   activeAsset,
   activeTextClips,
   activeVideoClips = [],
@@ -53,6 +55,29 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
+  const activePrimaryVideoClip = activeVideoClips[0];
+  const isVideoSelected = activePrimaryVideoClip && selectedClipId === activePrimaryVideoClip.id;
+
+  // Resolve current active playing asset from timeline clip or direct asset selection
+  const currentMediaAsset = useMemo(() => {
+    if (activePrimaryVideoClip?.assetId) {
+      const found = assets.find((a) => a.id === activePrimaryVideoClip.assetId);
+      if (found) return found;
+    }
+    return activeAsset;
+  }, [activePrimaryVideoClip, assets, activeAsset]);
+
+  // Calculate video target time inside its clip
+  const targetVideoTime = useMemo(() => {
+    if (!currentMediaAsset) return 0;
+    if (activePrimaryVideoClip) {
+      const offset = currentTime - activePrimaryVideoClip.startTime;
+      const dur = currentMediaAsset.duration || 10;
+      return Math.max(0, dur > 0 ? offset % dur : offset);
+    }
+    return Math.max(0, currentTime % (currentMediaAsset.duration || 10));
+  }, [activePrimaryVideoClip, currentMediaAsset, currentTime]);
+
   useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
@@ -61,22 +86,46 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
-  // Sync real video element playback
+  // Set volume and muted state on video element
   useEffect(() => {
     if (videoRef.current) {
-      if (isPlaying) {
-        videoRef.current.play().catch(() => {});
-      } else {
-        videoRef.current.pause();
+      videoRef.current.volume = isMuted ? 0 : volume / 100;
+      videoRef.current.muted = isMuted;
+    }
+  }, [volume, isMuted]);
+
+  // Sync real video element playback state
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (isPlaying) {
+      if (Math.abs(video.currentTime - targetVideoTime) > 0.3) {
+        video.currentTime = targetVideoTime;
       }
+      video.play().catch((err) => {
+        console.warn('Video play was prevented:', err);
+      });
+    } else {
+      video.pause();
+      video.currentTime = targetVideoTime;
     }
   }, [isPlaying]);
 
+  // Sync time when scrubbing or when paused (avoiding continuous seek on every frame during smooth playback)
   useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.currentTime = currentTime;
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (!isPlaying) {
+      video.currentTime = targetVideoTime;
+    } else {
+      const drift = Math.abs(video.currentTime - targetVideoTime);
+      if (drift > 0.45) {
+        video.currentTime = targetVideoTime;
+      }
     }
-  }, [currentTime]);
+  }, [targetVideoTime, isPlaying]);
 
   const toggleCanvasFullscreen = async () => {
     try {
@@ -212,8 +261,6 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
     return { className: '', phase: 'idle' };
   };
 
-  const activePrimaryVideoClip = activeVideoClips[0];
-  const isVideoSelected = activePrimaryVideoClip && selectedClipId === activePrimaryVideoClip.id;
   const primaryVideoAnim = getClipTimeBasedAnimation(activePrimaryVideoClip, currentTime);
 
   return (
@@ -275,28 +322,38 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
             <div className="absolute inset-0 opacity-10 bg-[linear-gradient(to_right,#808080_1px,transparent_1px),linear-gradient(to_bottom,#808080_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none"></div>
 
             {/* Video playback with real-time time-based in/out motion & transitions */}
-            {activeAsset?.type === 'video' && activeAsset.blobUrl ? (
+            {currentMediaAsset?.type === 'video' && currentMediaAsset.blobUrl ? (
               <video
                 ref={videoRef}
-                src={activeAsset.blobUrl}
+                key={currentMediaAsset.id}
+                src={currentMediaAsset.blobUrl}
                 muted={isMuted}
-                style={primaryVideoAnim.style}
-                className={`w-full h-full object-contain ${primaryVideoAnim.className}`}
                 playsInline
+                preload="auto"
+                style={primaryVideoAnim.style}
+                className={`w-full h-full object-contain ${primaryVideoAnim.className}`}
+                onLoadedMetadata={(e) => {
+                  const video = e.currentTarget;
+                  video.currentTime = targetVideoTime;
+                  if (isPlaying) {
+                    video.play().catch(() => {});
+                  }
+                }}
               />
-            ) : activeAsset?.type === 'image' && activeAsset.blobUrl ? (
+            ) : currentMediaAsset?.type === 'image' && currentMediaAsset.blobUrl ? (
               <img
-                src={activeAsset.blobUrl}
-                alt={activeAsset.name}
+                key={currentMediaAsset.id}
+                src={currentMediaAsset.blobUrl}
+                alt={currentMediaAsset.name}
                 style={primaryVideoAnim.style}
                 className={`w-full h-full object-contain ${primaryVideoAnim.className}`}
               />
-            ) : activeAsset ? (
+            ) : currentMediaAsset ? (
               <div className="text-center p-6 z-10 space-y-3">
                 <div className="inline-flex p-3 rounded-md bg-white/10 backdrop-blur-md border border-white/20 text-blue-400">
                   <Sparkles className="w-8 h-8 animate-pulse" />
                 </div>
-                <div className="text-white font-medium text-sm drop-shadow">{activeAsset.name}</div>
+                <div className="text-white font-medium text-sm drop-shadow">{currentMediaAsset.name}</div>
                 <div className="text-slate-400 text-xs font-mono">
                   Time: {currentTime.toFixed(1)}s / {totalDuration.toFixed(1)}s
                 </div>
