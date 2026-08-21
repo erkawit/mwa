@@ -12,7 +12,8 @@ import {
   Shield,
   Heart,
   MessageSquare,
-  Home
+  Home,
+  Compass
 } from 'lucide-react';
 import { AppSwal } from '../utils/swal';
 import { adminService } from '../services/adminService';
@@ -27,6 +28,7 @@ interface HeaderProps {
   onAddTextClip: () => void;
   onCheckUpdates: () => void;
   onGoHome: () => void;
+  onStartTour?: () => void;
   onOpenAdminPanel: () => void;
   onOpenDonate: () => void;
   onOpenInquiryWebboard: () => void;
@@ -40,6 +42,7 @@ export const Header: React.FC<HeaderProps> = ({
   onExport,
   onCheckUpdates,
   onGoHome,
+  onStartTour,
   onOpenAdminPanel,
   onOpenDonate,
   onOpenInquiryWebboard,
@@ -296,6 +299,18 @@ export const Header: React.FC<HeaderProps> = ({
                 {adminService.getPendingUsersCount()}
               </span>
             )}
+          </button>
+        )}
+
+        {/* Interactive Studio Tour & Guide Button */}
+        {onStartTour && (
+          <button
+            onClick={onStartTour}
+            title="ระบบแนะนำเครื่องมือทีละขั้นตอน (Studio Guide Tour)"
+            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded border border-emerald-300 transition shadow-2xs"
+          >
+            <Compass className="w-3.5 h-3.5 text-emerald-600" />
+            <span className="hidden lg:inline">แนะนำเครื่องมือ</span>
           </button>
         )}
 

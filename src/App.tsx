@@ -12,6 +12,7 @@ import { DonateModal } from './components/DonateModal';
 import { InquiryWebboardModal } from './components/InquiryWebboardModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { RelinkMediaModal } from './components/RelinkMediaModal';
+import { StudioGuideTour } from './components/StudioGuideTour';
 import type { 
   MediaAsset, 
   TimelineClip, 
@@ -35,25 +36,16 @@ import { adminService } from './services/adminService';
 
 // Initial Project Settings with 2K Option
 const initialSettings: ProjectSettings = {
-  name: 'Multimedia_Studio_Project',
+  name: 'New_Multimedia_Project',
   aspectRatio: '16:9',
   resolution: '2K (2560x1440)',
   fps: 30,
 };
 
-// Initial Folders
-const initialFolders: MediaFolder[] = [
-  { id: 'fld-1', name: 'วิดีโอหลัก (Video Footages)', createdAt: Date.now(), isOpen: true },
-  { id: 'fld-2', name: 'เสียง & ซาวด์แทร็ก (Audio FX)', createdAt: Date.now(), isOpen: true },
-];
-
-// Initial Demo Assets
-const initialAssets: MediaAsset[] = [
-  { id: 'ast-1', name: 'Intro_Motion_Graphics.mp4', type: 'video', folderId: 'fld-1', duration: 8.5, size: '24.2 MB', rawSize: 25375539, color: 'bg-blue-600', createdAt: Date.now() },
-  { id: 'ast-2', name: 'Main_Interview_Scene.mp4', type: 'video', folderId: 'fld-1', duration: 15.0, size: '68.5 MB', rawSize: 71827456, color: 'bg-blue-600', createdAt: Date.now() },
-  { id: 'ast-3', name: 'Background_Acoustic_Beat.mp3', type: 'audio', folderId: 'fld-2', duration: 22.0, size: '4.8 MB', rawSize: 5033164, color: 'bg-emerald-600', createdAt: Date.now() },
-  { id: 'ast-4', name: 'Channel_Logo_HD.png', type: 'image', folderId: null, duration: 10.0, size: '1.2 MB', rawSize: 1258291, color: 'bg-amber-600', createdAt: Date.now() },
-];
+// Initial Clean State (No dummy sample files)
+const initialFolders: MediaFolder[] = [];
+const initialAssets: MediaAsset[] = [];
+const initialClips: TimelineClip[] = [];
 
 // Initial Tracks
 const initialTracks: TimelineTrack[] = [
@@ -62,68 +54,13 @@ const initialTracks: TimelineTrack[] = [
   { id: 'trk-audio', name: 'เสียง & ดนตรี (Audio 1)', type: 'audio', muted: false, locked: false, solo: false },
 ];
 
-// Initial Timeline Clips
-const initialClips: TimelineClip[] = [
-  { 
-    id: 'clp-1', 
-    assetId: 'ast-1', 
-    name: 'Intro_Motion_Graphics.mp4', 
-    type: 'video', 
-    trackId: 'trk-video', 
-    startTime: 0, 
-    duration: 8.5, 
-    color: 'bg-blue-600' 
-  },
-  { 
-    id: 'clp-2', 
-    assetId: 'ast-2', 
-    name: 'Main_Interview_Scene.mp4', 
-    type: 'video', 
-    trackId: 'trk-video', 
-    startTime: 8.5, 
-    duration: 12.0, 
-    color: 'bg-blue-600' 
-  },
-  { 
-    id: 'clp-3', 
-    assetId: 'ast-3', 
-    name: 'Background_Acoustic_Beat.mp3', 
-    type: 'audio', 
-    trackId: 'trk-audio', 
-    startTime: 0, 
-    duration: 20.5, 
-    color: 'bg-emerald-600' 
-  },
-  { 
-    id: 'clp-4', 
-    name: '✨ ยินดีต้อนรับสู่ Multimedia Studio', 
-    type: 'text', 
-    trackId: 'trk-text', 
-    startTime: 1.0, 
-    duration: 7.0, 
-    color: 'bg-purple-600',
-    textContent: '✨ ยินดีต้อนรับสู่ Multimedia Studio',
-    textEffect: {
-      fontFamily: 'Prompt, sans-serif',
-      fontSize: 28,
-      color: '#FFFFFF',
-      bold: true,
-      italic: false,
-      align: 'center',
-      effectType: 'neon',
-      shadowColor: '#3B82F6',
-      strokeColor: '#000000',
-      strokeWidth: 2,
-    }
-  },
-];
-
 export function App() {
   // Navigation & Auth State
   const [currentView, setCurrentView] = useState<'welcome' | 'studio'>('welcome');
   const [userSession, setUserSession] = useState<UserSession | null>(authService.getSession());
 
-  // Modal States
+  // Modal & Guide Tour States
+  const [isTourOpen, setIsTourOpen] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [isDonateModalOpen, setIsDonateModalOpen] = useState(false);
@@ -140,9 +77,9 @@ export function App() {
   const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([]);
   const [customFonts, setCustomFonts] = useState<CustomFont[]>([]);
   
-  const [activeAssetId, setActiveAssetId] = useState<string | null>(initialAssets[0].id);
-  const [selectedClipId, setSelectedClipId] = useState<string | null>(initialClips[0].id);
-  const [focusedTrackId, setFocusedTrackId] = useState<string | null>(initialTracks[1].id);
+  const [activeAssetId, setActiveAssetId] = useState<string | null>(null);
+  const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+  const [focusedTrackId, setFocusedTrackId] = useState<string | null>('trk-video');
   const [editingTextClip, setEditingTextClip] = useState<TimelineClip | null>(null);
 
   // Admin Notification for Pending Registrations
@@ -694,12 +631,12 @@ export function App() {
     } else {
       const newP: SavedProject = {
         id: `proj-${Date.now()}`,
-        name: `New_Project_${Date.now().toString().slice(-4)}`,
+        name: `Project_${Date.now().toString().slice(-4)}`,
         aspectRatio: '16:9',
         resolution: '2K (2560x1440)',
         fps: 30,
-        totalDuration: 15,
-        clipCount: 1,
+        totalDuration: 30,
+        clipCount: 0,
         updatedAt: Date.now(),
         createdAt: Date.now(),
       };
@@ -710,6 +647,14 @@ export function App() {
         resolution: newP.resolution,
         fps: newP.fps,
       });
+      // Start with clean empty state (No dummy sample files)
+      setAssets([]);
+      setClips([]);
+      setFolders([]);
+      setActiveAssetId(null);
+      setSelectedClipId(null);
+      // Auto launch Interactive Studio Guide Tour
+      setIsTourOpen(true);
     }
     setCurrentView('studio');
   };
@@ -811,6 +756,7 @@ export function App() {
         onAddTextClip={handleAddTextClip}
         onCheckUpdates={() => setIsUpdateModalOpen(true)}
         onGoHome={() => setCurrentView('welcome')}
+        onStartTour={() => setIsTourOpen(true)}
         onOpenAdminPanel={() => setIsAdminModalOpen(true)}
         onOpenDonate={() => setIsDonateModalOpen(true)}
         onOpenInquiryWebboard={() => setIsInquiryModalOpen(true)}
@@ -948,6 +894,12 @@ export function App() {
           onClose={() => setRelinkTargetAsset(null)}
         />
       )}
+
+      {/* Interactive Studio Onboarding & Guide Tour */}
+      <StudioGuideTour
+        isOpen={isTourOpen}
+        onClose={() => setIsTourOpen(false)}
+      />
     </div>
   );
 }
