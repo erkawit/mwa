@@ -455,8 +455,8 @@ export function App() {
     setSelectedClipId(newClip.id);
   };
 
-  // Add Text Clip directly at Red Playhead
-  const handleAddTextClip = () => {
+  // Add Text Clip directly at Red Playhead (with optional preset styles)
+  const handleAddTextClip = (preset?: { name?: string; content?: string; effect?: Partial<TextEffectConfig> }) => {
     let textTrack = tracks.find((t) => t.id === focusedTrackId && t.type === 'text') || tracks.find((t) => t.type === 'text');
     if (!textTrack) {
       textTrack = {
@@ -480,30 +480,32 @@ export function App() {
       newStartTime = intersectingClip.startTime + intersectingClip.duration;
     }
 
+    const defaultEffect: TextEffectConfig = {
+      fontFamily: 'Prompt, sans-serif',
+      fontSize: 28,
+      color: '#FFFFFF',
+      bold: true,
+      italic: false,
+      align: 'center',
+      effectType: 'shadow',
+      shadowColor: 'rgba(0,0,0,0.85)',
+      ...preset?.effect,
+    };
+
     const newTextClip: TimelineClip = {
       id: `clp-${Date.now()}`,
-      name: 'ข้อความใหม่',
+      name: preset?.name || 'ข้อความใหม่',
       type: 'text',
       trackId: textTrack.id,
       startTime: parseFloat(newStartTime.toFixed(2)),
       duration: 5.0,
       color: 'bg-purple-600',
-      textContent: 'ข้อความใหม่ของคุณ',
-      textEffect: {
-        fontFamily: 'Prompt, sans-serif',
-        fontSize: 28,
-        color: '#FFFFFF',
-        bold: true,
-        italic: false,
-        align: 'center',
-        effectType: 'shadow',
-        shadowColor: 'rgba(0,0,0,0.85)',
-      },
+      textContent: preset?.content || preset?.name || 'ข้อความใหม่ของคุณ',
+      textEffect: defaultEffect,
     };
 
     setClips((prev) => [...prev, newTextClip]);
     setSelectedClipId(newTextClip.id);
-    setEditingTextClip(newTextClip);
   };
 
   // Move clip horizontally & vertically across tracks
@@ -906,12 +908,15 @@ export function App() {
 
       {/* Main Workspace Area (Sidebar + Center Canvas + Properties Panel) */}
       <div className="flex-1 flex overflow-hidden min-h-0">
-        {/* Left: Real Media Assets Sidebar & Folders */}
+        {/* Left: 3-in-1 Primary Navigation Dock (Media, Font, Animation) & Drawer */}
         <AssetSidebar
           assets={assets}
           folders={folders}
           uploadTasks={uploadTasks}
           activeAssetId={activeAssetId}
+          selectedClip={selectedClip}
+          customFonts={customFonts}
+          userId={userSession?.id}
           onSelectAsset={handleSelectAssetSync}
           onAddAsset={handleAddAsset}
           onDeleteAsset={handleDeleteAsset}
@@ -925,6 +930,11 @@ export function App() {
           onUpdateUploadTask={handleUpdateUploadTask}
           onRemoveUploadTask={handleRemoveUploadTask}
           onRelinkAsset={(asset) => setRelinkTargetAsset(asset)}
+          onAddTextClip={handleAddTextClip}
+          onAddCustomFont={(font) => setCustomFonts((prev) => [...prev, font])}
+          onUpdateClipEffect={handleSaveTextEffect}
+          onUpdateClipTransition={handleUpdateClipTransition}
+          onUpdateClipMotion={handleUpdateClipMotion}
         />
 
         {/* Center: Canvas & Preview (with live text, video render & direct canvas selection) */}

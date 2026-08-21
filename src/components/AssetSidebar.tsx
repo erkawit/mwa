@@ -9,24 +9,38 @@ import {
   Search, 
   PlusCircle, 
   Layers, 
-  Folder, 
-  FolderOpen, 
-  ChevronRight, 
-  ChevronDown, 
   Edit3, 
-  Loader2,
-  AlertTriangle,
-  FolderSearch
+  FolderSearch,
+  Type,
+  Sparkles,
+  Play,
+  RotateCw,
+  Zap,
+  Upload
 } from 'lucide-react';
-import type { MediaAsset, MediaType, MediaFolder, UploadTask } from '../types';
-import { AppSwal, alertConfirm, alertError } from '../utils/swal';
+import type { 
+  MediaAsset, 
+  MediaType, 
+  MediaFolder, 
+  UploadTask, 
+  CustomFont, 
+  TimelineClip, 
+  TextEffectConfig, 
+  TransitionType, 
+  MotionAnimation 
+} from '../types';
+import { AppSwal, alertConfirm, alertError, alertSuccess } from '../utils/swal';
 import { googleDriveService } from '../services/googleDrive';
+import { defaultFonts, registerCustomFont } from '../utils/fontManager';
 
 interface AssetSidebarProps {
   assets: MediaAsset[];
   folders: MediaFolder[];
   uploadTasks: UploadTask[];
   activeAssetId: string | null;
+  selectedClip?: TimelineClip | null;
+  customFonts?: CustomFont[];
+  userId?: string;
   onSelectAsset: (asset: MediaAsset) => void;
   onAddAsset: (newAsset: MediaAsset) => void;
   onDeleteAsset: (assetId: string) => void;
@@ -40,35 +54,60 @@ interface AssetSidebarProps {
   onUpdateUploadTask: (taskId: string, progress: number, status: UploadTask['status']) => void;
   onRemoveUploadTask: (taskId: string) => void;
   onRelinkAsset?: (asset: MediaAsset) => void;
+  onAddTextClip?: (preset?: { name?: string; content?: string; effect?: Partial<TextEffectConfig> }) => void;
+  onAddCustomFont?: (font: CustomFont) => void;
+  onUpdateClipEffect?: (clipId: string, text: string, effect: TextEffectConfig) => void;
+  onUpdateClipTransition?: (clipId: string, transition: TransitionType) => void;
+  onUpdateClipMotion?: (clipId: string, motion: MotionAnimation) => void;
 }
 
 const MAX_VIDEO_SIZE = 4 * 1024 * 1024 * 1024; // 4 GB in bytes
 
 export const AssetSidebar: React.FC<AssetSidebarProps> = ({
   assets,
-  folders,
-  uploadTasks,
+  folders: _folders,
+  uploadTasks: _uploadTasks,
   activeAssetId,
+  selectedClip,
+  customFonts = [],
+  userId,
   onSelectAsset,
   onAddAsset,
   onDeleteAsset,
   onRenameAsset,
-  onMoveAssetToFolder = () => {},
+  onMoveAssetToFolder: _onMoveAssetToFolder = () => {},
   onCreateFolder,
-  onDeleteFolder,
-  onToggleFolder,
+  onDeleteFolder: _onDeleteFolder,
+  onToggleFolder: _onToggleFolder,
   onAddToTimeline,
   onAddUploadTask,
   onUpdateUploadTask,
   onRemoveUploadTask,
-  onRelinkAsset = () => {},
+  onRelinkAsset: _onRelinkAsset = () => {},
+  onAddTextClip = () => {},
+  onAddCustomFont = () => {},
+  onUpdateClipEffect = () => {},
+  onUpdateClipTransition = () => {},
+  onUpdateClipMotion = () => {},
 }) => {
+  // Navigation Dock Tab State: 'media' | 'font' | 'animation'
+  const [activeTab, setActiveTab] = useState<'media' | 'font' | 'animation'>('media');
+
+  // Media Tab States
   const [filter, setFilter] = useState<'all' | 'video' | 'audio' | 'image'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isDraggingOver, setIsDraggingOver] = useState(false);
-  const [dropTargetFolderId, setDropTargetFolderId] = useState<string | null>(null);
-  const touchHoldTimer = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fontUploadRef = useRef<HTMLInputElement>(null);
+
+  // Font Tab States
+  const [fontSearchQuery, setFontSearchQuery] = useState('');
+
+  // Scoped Fonts: Default system fonts + custom fonts uploaded by this user
+  const visibleCustomFonts = customFonts.filter(
+    (f) => !f.uploadedBy || f.uploadedBy === 'anonymous' || f.uploadedBy === userId
+  );
+  const allFonts = [...defaultFonts, ...visibleCustomFonts];
 
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 B';
@@ -83,7 +122,6 @@ export const AssetSidebar: React.FC<AssetSidebarProps> = ({
     const fileArray = Array.from(files);
 
     for (const file of fileArray) {
-      // 1. Determine media type
       let type: MediaType | null = null;
       if (file.type.startsWith('video/')) type = 'video';
       else if (file.type.startsWith('audio/')) type = 'audio';
@@ -94,7 +132,6 @@ export const AssetSidebar: React.FC<AssetSidebarProps> = ({
         continue;
       }
 
-      // 2. Validate max size for video (Max 4GB)
       if (type === 'video' && file.size > MAX_VIDEO_SIZE) {
         alertError(
           'ขนาดไฟล์เกินขีดจำกัด',
@@ -114,7 +151,6 @@ export const AssetSidebar: React.FC<AssetSidebarProps> = ({
       };
       onAddUploadTask(task);
 
-      // SweetAlert Progress modal with "Run in Background" option
       let isSwalClosed = false;
       let modalInterval: any = null;
 
@@ -146,7 +182,6 @@ export const AssetSidebar: React.FC<AssetSidebarProps> = ({
         },
       });
 
-      // Duration extraction
       const blobUrl = URL.createObjectURL(file);
       let duration: number | undefined = undefined;
 
@@ -172,175 +207,114 @@ export const AssetSidebar: React.FC<AssetSidebarProps> = ({
         console.warn('Metadata read fallback:', e);
       }
 
-      // Simulate realistic upload progress
       let currentProg = 10;
       modalInterval = setInterval(() => {
         currentProg += Math.floor(Math.random() * 20 + 15);
         if (currentProg >= 100) {
           currentProg = 100;
           clearInterval(modalInterval);
-          onUpdateUploadTask(taskId, 100, 'done');
-
-          const colorMap: Record<MediaType, string> = {
-            video: 'bg-blue-600',
-            audio: 'bg-emerald-600',
-            image: 'bg-amber-600',
-            text: 'bg-purple-600',
-          };
 
           const newAsset: MediaAsset = {
-            id: `asset-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+            id: `ast-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
             name: file.name,
-            type,
+            type: type!,
             folderId: null,
             file,
             blobUrl,
-            duration: duration ? parseFloat(duration.toFixed(1)) : undefined,
+            localPath: (file as any).path || file.name,
+            duration: duration ? parseFloat(duration.toFixed(1)) : (type === 'image' ? 5.0 : 10.0),
             size: formatFileSize(file.size),
             rawSize: file.size,
-            color: colorMap[type],
+            color: type === 'video' ? 'bg-blue-600' : type === 'audio' ? 'bg-emerald-600' : 'bg-amber-600',
             createdAt: Date.now(),
           };
 
           onAddAsset(newAsset);
-
-          if (!isSwalClosed && AppSwal.isVisible()) {
-            AppSwal.close();
-          }
+          onUpdateUploadTask(taskId, 100, 'done');
 
           setTimeout(() => {
             onRemoveUploadTask(taskId);
           }, 3000);
+
+          if (!isSwalClosed) {
+            AppSwal.close();
+            alertSuccess('นำเข้าไฟล์สำเร็จ!', `ไฟล์ "${file.name}" พร้อมใช้งานในคลังสื่อแล้ว`);
+          }
         } else {
           onUpdateUploadTask(taskId, currentProg, 'uploading');
-          if (!isSwalClosed) {
-            const bar = document.getElementById(`swal-upload-bar-${taskId}`);
-            const pct = document.getElementById(`swal-upload-pct-${taskId}`);
-            if (bar && pct) {
-              bar.style.width = `${currentProg}%`;
-              pct.innerText = `${currentProg}%`;
-            }
-          }
+          const bar = document.getElementById(`swal-upload-bar-${taskId}`);
+          const pct = document.getElementById(`swal-upload-pct-${taskId}`);
+          const speed = document.getElementById(`swal-upload-speed-${taskId}`);
+          if (bar) bar.style.width = `${currentProg}%`;
+          if (pct) pct.innerText = `${currentProg}%`;
+          if (speed) speed.innerText = `ความเร็ว: ${(Math.random() * 15 + 35).toFixed(1)} MB/s`;
         }
       }, 150);
     }
   };
 
-  const handleImportFromGoogleDrive = async () => {
-    const isReady = googleDriveService.isConfigured();
-    if (!isReady) {
-      const { value: configValues } = await AppSwal.fire({
-        title: 'ตั้งค่า Google Drive API (เชื่อมต่อครั้งแรก)',
-        html: `
-          <div class="space-y-3 text-left font-sans text-xs pt-1 text-slate-700">
-            <p class="font-doc text-slate-600">
-              กรุณาระบุ <strong>Client ID</strong> และ <strong>API Key</strong> จาก Google Cloud Console (หรือตั้งค่าผ่าน <code>.env</code> / Vercel Environment Variables):
-            </p>
-            <div>
-              <label class="block font-medium mb-1">Google OAuth 2.0 Client ID:</label>
-              <input id="swal-gd-client" placeholder="xxx.apps.googleusercontent.com" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded text-slate-800 font-mono text-xs focus:ring-2 focus:ring-emerald-500 focus:bg-white" value="${googleDriveService.getCredentials().clientId}" />
-            </div>
-            <div>
-              <label class="block font-medium mb-1">Google API Key:</label>
-              <input id="swal-gd-key" type="password" placeholder="AIzaSy..." class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded text-slate-800 font-mono text-xs focus:ring-2 focus:ring-emerald-500 focus:bg-white" value="${googleDriveService.getCredentials().apiKey}" />
-            </div>
-            <div class="p-2.5 bg-amber-50 border border-amber-200 rounded text-amber-900 text-[11px] font-doc">
-              🔒 <strong>ความปลอดภัย:</strong> ข้อมูลนี้จะถูกเก็บเฉพาะใน Browser ของคุณเพื่อใช้ดึงไฟล์โดยตรงจาก Google Drive และใช้สิทธิ์ขั้นต่ำ (drive.file)
-            </div>
-          </div>
-        `,
-        showCancelButton: true,
-        confirmButtonText: 'บันทึก & เปิด Google Drive',
-        cancelButtonText: 'ยกเลิก',
-        preConfirm: () => {
-          const clientId = (document.getElementById('swal-gd-client') as HTMLInputElement).value;
-          const apiKey = (document.getElementById('swal-gd-key') as HTMLInputElement).value;
-          if (!clientId.trim() || !apiKey.trim()) {
-            AppSwal.showValidationMessage('กรุณากรอก Client ID และ API Key ให้ครบถ้วน');
-            return false;
-          }
-          return { clientId, apiKey };
-        }
-      });
-
-      if (configValues) {
-        googleDriveService.setCredentials(configValues.clientId, configValues.apiKey);
-      } else {
-        return;
-      }
-    }
-
+  // Google Drive Cloud Import
+  const handleImportGoogleDrive = async () => {
     try {
       await googleDriveService.openFilePicker((newAsset) => {
         onAddAsset(newAsset);
       });
+      alertSuccess('เชื่อมโยง Google Drive สำเร็จ!', 'นำเข้าไฟล์จาก Google Drive เข้าสู่คลังสื่อเรียบร้อยแล้ว');
     } catch (err: any) {
-      if (err?.error !== 'popup_closed_by_user') {
-        alertError('การเชื่อมต่อ Google Drive ขัดข้อง', err?.message || 'โปรดตรวจสอบการตั้งค่า OAuth Client ID และ Authorized Origins');
+      if (err?.message !== 'User cancelled') {
+        alertError('เกิดข้อผิดพลาด Google Drive', err?.message || 'ไม่สามารถเชื่อมโยง Google Drive ได้');
       }
     }
   };
 
-  const handleCreateNewFolder = async () => {
-    const { value: folderName } = await AppSwal.fire({
-      title: 'สร้างโฟลเดอร์ใหม่ (Create Folder)',
-      html: `
-        <div class="space-y-3 text-left font-sans text-xs pt-1 text-slate-700">
-          <div class="flex items-center gap-3 p-3 bg-amber-50/80 border border-amber-200 rounded">
-            <div class="w-8 h-8 rounded bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
-              <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
-              </svg>
-            </div>
-            <div>
-              <div class="font-semibold text-slate-800">จัดหมวดหมู่คลังสื่อ</div>
-              <div class="text-[11px] text-slate-500 font-doc">สร้างโฟลเดอร์เพื่อจัดระเบียบฟุตเทจ, เพลง, กราฟิก</div>
-            </div>
-          </div>
-          <div>
-            <label class="block font-medium text-slate-700 mb-1">ชื่อโฟลเดอร์:</label>
-            <input 
-              id="swal-new-folder-name" 
-              type="text" 
-              placeholder="เช่น Footage_Scene_1, Sound_Effects..." 
-              class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded text-slate-800 text-xs focus:ring-2 focus:ring-amber-500 focus:bg-white focus:outline-none font-sans" 
-            />
-          </div>
-        </div>
-      `,
-      showCancelButton: true,
-      confirmButtonText: 'สร้างโฟลเดอร์',
-      cancelButtonText: 'ยกเลิก',
-      preConfirm: () => {
-        const input = document.getElementById('swal-new-folder-name') as HTMLInputElement;
-        const val = input?.value?.trim();
-        if (!val) {
-          AppSwal.showValidationMessage('กรุณาระบุชื่อโฟลเดอร์');
-          return false;
-        }
-        return val;
-      }
-    });
+  // User Font Upload Handler
+  const handleCustomFontUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    if (folderName) {
-      onCreateFolder(folderName);
+    try {
+      const loaded = await registerCustomFont(file, userId);
+      onAddCustomFont(loaded);
+      alertSuccess('นำเข้าฟอนต์สำเร็จ!', `ฟอนต์ "${loaded.name}" ผูกเข้ากับบัญชีของคุณและพร้อมใช้งานแล้ว`);
+    } catch (err) {
+      alertError('เกิดข้อผิดพลาดในการโหลดฟอนต์', 'โปรดตรวจสอบว่าเป็นไฟล์ฟอนต์ที่ถูกต้อง (.ttf, .otf, .woff, .woff2)');
+    }
+    e.target.value = '';
+  };
+
+  // Motion & Transition Handlers for Animation Tab
+  const currentMotion = selectedClip?.motion || {
+    inAnimation: 'none',
+    outAnimation: 'none',
+    loopAnimation: 'none',
+    duration: 0.6,
+  };
+  const currentTransition = selectedClip?.transition || 'none';
+
+  const handleSelectMotion = (field: keyof MotionAnimation, value: any) => {
+    if (selectedClip) {
+      const updated = { ...currentMotion, [field]: value };
+      onUpdateClipMotion(selectedClip.id, updated);
     }
   };
 
+  const handleSelectTransition = (trans: TransitionType) => {
+    if (selectedClip) {
+      onUpdateClipTransition(selectedClip.id, trans);
+    }
+  };
+
+  // Rename & Delete Actions
   const handleRename = async (asset: MediaAsset, e: React.MouseEvent) => {
     e.stopPropagation();
     const { value: newName } = await AppSwal.fire({
-      title: 'เปลี่ยนชื่อไฟล์สื่อ (Rename Asset)',
+      title: 'เปลี่ยนชื่อไฟล์สื่อ',
       input: 'text',
       inputValue: asset.name,
       showCancelButton: true,
-      confirmButtonText: 'บันทึกชื่อใหม่',
+      confirmButtonText: 'บันทึก',
       cancelButtonText: 'ยกเลิก',
-      inputValidator: (val) => {
-        if (!val || !val.trim()) return 'กรุณาระบุชื่อไฟล์';
-      }
     });
-
     if (newName && newName.trim() && newName !== asset.name) {
       onRenameAsset(asset.id, newName.trim());
     }
@@ -350,7 +324,7 @@ export const AssetSidebar: React.FC<AssetSidebarProps> = ({
     e.stopPropagation();
     const confirmed = await alertConfirm(
       'ยืนยันการลบไฟล์สื่อ',
-      `คุณต้องการลบ "${asset.name}" ออกจากคลังสื่อใช่หรือไม่?`,
+      `คุณต้องการลบ "${asset.name}" ออกจากคลังสื่อใช่หรือไม่? (คลิปบนไทม์ไลน์จะแสดงสถานะสีแดง)`,
       'ลบไฟล์',
       'ยกเลิก'
     );
@@ -359,447 +333,616 @@ export const AssetSidebar: React.FC<AssetSidebarProps> = ({
     }
   };
 
-  const handleDeleteFolder = async (folder: MediaFolder, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const confirmed = await alertConfirm(
-      'ลบโฟลเดอร์',
-      `คุณต้องการลบโฟลเดอร์ "${folder.name}" หรือไม่? ไฟล์ที่อยู่ในโฟลเดอร์นี้จะถูกย้ายออกมาที่รูทหลัก`,
-      'ลบโฟลเดอร์',
-      'ยกเลิก'
-    );
-    if (confirmed) {
-      onDeleteFolder(folder.id);
+  const handleCreateNewFolder = async () => {
+    const { value: folderName } = await AppSwal.fire({
+      title: 'สร้างโฟลเดอร์ใหม่',
+      input: 'text',
+      inputPlaceholder: 'เช่น ฟุตเทจหลัก, ซาวด์เอฟเฟกต์...',
+      showCancelButton: true,
+      confirmButtonText: 'สร้างโฟลเดอร์',
+      cancelButtonText: 'ยกเลิก',
+    });
+    if (folderName && folderName.trim()) {
+      onCreateFolder(folderName.trim());
     }
   };
 
-  // Filter assets
   const filteredAssets = assets.filter((asset) => {
     const matchesFilter = filter === 'all' || asset.type === filter;
     const matchesSearch = asset.name.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesFilter && matchesSearch;
   });
 
-  const getMediaIcon = (type: MediaType) => {
-    switch (type) {
-      case 'video':
-        return <Video className="w-4 h-4 text-blue-600" />;
-      case 'audio':
-        return <Music className="w-4 h-4 text-emerald-600" />;
-      case 'image':
-        return <ImageIcon className="w-4 h-4 text-amber-600" />;
-      default:
-        return <Layers className="w-4 h-4 text-slate-500" />;
-    }
-  };
-
   return (
-    <aside 
-      onDragOver={(e) => { e.preventDefault(); setIsDraggingOver(true); }}
-      onDragLeave={() => setIsDraggingOver(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setIsDraggingOver(false);
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-          handleProcessFiles(e.dataTransfer.files);
-        }
-      }}
-      className={`w-80 bg-app-surface border-r border-app-border flex flex-col shrink-0 select-none transition-colors ${
-        isDraggingOver ? 'bg-blue-50/40 ring-2 ring-blue-400 ring-inset' : ''
-      }`}
-    >
-      {/* Hidden file input */}
-      <input
-        type="file"
-        ref={fileInputRef}
-        onChange={(e) => e.target.files && handleProcessFiles(e.target.files)}
-        multiple
-        accept="video/*,audio/*,image/*"
-        className="hidden"
-      />
+    <div className="flex h-full shrink-0 select-none overflow-hidden">
+      {/* ─────────────────────────────────────────────────────────────
+          1. FAR-LEFT VERTICAL ICON DOCK (Canva / CapCut Style Strip)
+          ───────────────────────────────────────────────────────────── */}
+      <nav className="w-16 bg-slate-900 border-r border-slate-800 flex flex-col items-center py-2.5 z-20 shrink-0">
+        {/* Media Tab Button */}
+        <button
+          onClick={() => setActiveTab('media')}
+          title="คลังสื่อ & โฟลเดอร์ (Media Library)"
+          className={`w-full py-3 px-1 flex flex-col items-center gap-1 transition relative group ${
+            activeTab === 'media'
+              ? 'text-white bg-slate-800/80 font-medium'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+          }`}
+        >
+          {activeTab === 'media' && (
+            <div className="absolute left-0 top-1 bottom-1 w-1 bg-blue-500 rounded-r"></div>
+          )}
+          <Layers className={`w-5 h-5 ${activeTab === 'media' ? 'text-blue-400' : 'text-slate-400 group-hover:text-slate-200'}`} />
+          <span className="text-[11px] font-sans tracking-tight">คลังสื่อ</span>
+        </button>
 
-      {/* Top Header & Actions */}
-      <div className="p-3.5 border-b border-app-border">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Layers className="w-4 h-4 text-slate-700" />
-            <span className="text-xs font-semibold text-slate-800 uppercase tracking-wider">
-              คลังไฟล์สื่อ (Media Assets)
-            </span>
-          </div>
-          <span className="text-[11px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-            {assets.length} ไฟล์
-          </span>
-        </div>
+        {/* Font Tab Button */}
+        <button
+          onClick={() => setActiveTab('font')}
+          title="แบบอักษร & ข้อความ (Font & Text Studio)"
+          className={`w-full py-3 px-1 flex flex-col items-center gap-1 transition relative group mt-1 ${
+            activeTab === 'font'
+              ? 'text-white bg-slate-800/80 font-medium'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+          }`}
+        >
+          {activeTab === 'font' && (
+            <div className="absolute left-0 top-1 bottom-1 w-1 bg-purple-500 rounded-r"></div>
+          )}
+          <Type className={`w-5 h-5 ${activeTab === 'font' ? 'text-purple-400' : 'text-slate-400 group-hover:text-slate-200'}`} />
+          <span className="text-[11px] font-sans tracking-tight">แบบอักษร</span>
+        </button>
 
-        {/* Buttons: Import Real File, Google Drive & Create Folder */}
-        <div className="grid grid-cols-3 gap-1.5">
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center justify-center gap-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium py-2 px-2 rounded transition shadow-xs"
-            title="นำเข้าไฟล์จากเครื่องของคุณ"
-          >
-            <UploadCloud className="w-3.5 h-3.5" />
-            <span className="truncate">ไฟล์ในเครื่อง</span>
-          </button>
+        {/* Animation Tab Button */}
+        <button
+          onClick={() => setActiveTab('animation')}
+          title="อนิเมชั่น & เอฟเฟกต์เคลื่อนไหว (Animation & Motion FX)"
+          className={`w-full py-3 px-1 flex flex-col items-center gap-1 transition relative group mt-1 ${
+            activeTab === 'animation'
+              ? 'text-white bg-slate-800/80 font-medium'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+          }`}
+        >
+          {activeTab === 'animation' && (
+            <div className="absolute left-0 top-1 bottom-1 w-1 bg-amber-500 rounded-r"></div>
+          )}
+          <Sparkles className={`w-5 h-5 ${activeTab === 'animation' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'}`} />
+          <span className="text-[11px] font-sans tracking-tight">อนิเมชั่น</span>
+        </button>
+      </nav>
 
-          <button
-            onClick={handleImportFromGoogleDrive}
-            className="flex items-center justify-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium py-2 px-2 rounded transition shadow-xs"
-            title="ดึงไฟล์จาก Google Drive"
-          >
-            <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
-              <path d="M7.71 3.5L1.15 15l3.43 6l6.55-11.5L7.71 3.5zm4.86 6l3.43 6h7.71L20.29 9.5h-7.72zm3.43 6l-3.43 6h13.14l3.43-6H16z"/>
-            </svg>
-            <span className="truncate">Google Drive</span>
-          </button>
-
-          <button
-            onClick={handleCreateNewFolder}
-            className="flex items-center justify-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-xs font-medium py-2 px-2 rounded transition"
-            title="สร้างโฟลเดอร์ใหม่"
-          >
-            <FolderPlus className="w-3.5 h-3.5 text-slate-600" />
-            <span className="truncate">โฟลเดอร์</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Search & Type Filters */}
-      <div className="p-3 border-b border-app-border space-y-2.5">
-        <div className="relative">
-          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-          <input
-            type="text"
-            placeholder="ค้นหาชื่อไฟล์..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:bg-white"
-          />
-        </div>
-
-        <div className="flex gap-1 overflow-x-auto pb-0.5 text-[11px]">
-          {(['all', 'video', 'audio', 'image'] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setFilter(t)}
-              className={`px-2 py-1 rounded capitalize transition shrink-0 font-medium ${
-                filter === t
-                  ? 'bg-slate-800 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200'
-              }`}
-            >
-              {t === 'all' ? 'ทั้งหมด' : t}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Active Background Transfer Progress List (Requirement 9) */}
-      {uploadTasks.length > 0 && (
-        <div className="p-2.5 bg-blue-50/70 border-b border-blue-200 space-y-2">
-          <div className="flex items-center justify-between text-[11px] font-semibold text-blue-900">
-            <span className="flex items-center gap-1.5">
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
-              <span>การถ่ายโอนไฟล์เบื้องหลัง ({uploadTasks.length})</span>
-            </span>
-          </div>
-
-          <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
-            {uploadTasks.map((t) => (
-              <div key={t.id} className="p-2 bg-white rounded border border-blue-200 text-xs shadow-2xs">
-                <div className="flex items-center justify-between text-[11px] mb-1">
-                  <span className="font-medium text-slate-800 truncate max-w-[170px]" title={t.fileName}>
-                    {t.fileName}
-                  </span>
-                  <span className="font-mono text-blue-600 font-semibold">{t.progress}%</span>
-                </div>
-                <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                  <div 
-                    className="bg-blue-600 h-1.5 rounded-full transition-all duration-150" 
-                    style={{ width: `${t.progress}%` }}
-                  ></div>
-                </div>
-                <div className="flex justify-between text-[10px] text-slate-500 font-mono mt-1">
-                  <span>{t.fileSize}</span>
-                  <span>{t.status === 'done' ? 'เสร็จสมบูรณ์' : 'กำลังนำเข้า...'}</span>
-                </div>
+      {/* ─────────────────────────────────────────────────────────────
+          2. DYNAMIC SUB-PANEL DRAWER (Content changes based on activeTab)
+          ───────────────────────────────────────────────────────────── */}
+      <aside className="w-80 bg-app-surface border-r border-app-border flex flex-col min-h-0 overflow-hidden shrink-0">
+        
+        {/* =========================================================
+            TAB 1: MEDIA ASSETS (คลังสื่อ)
+            ========================================================= */}
+        {activeTab === 'media' && (
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            {/* Header & Quick Actions */}
+            <div className="p-3 border-b border-app-border bg-slate-50/70 shrink-0">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Layers className="w-4 h-4 text-blue-600" />
+                  <span>คลังสื่อ & ไฟล์ในโปรเจกต์</span>
+                </span>
+                <span className="text-[11px] font-mono text-slate-500 font-medium">
+                  {assets.length} รายการ
+                </span>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
 
-      {/* Folders & Asset Tree List (List-Down View) */}
-      <div 
-        onDragOver={(e) => { e.preventDefault(); }}
-        onDrop={(e) => {
-          e.preventDefault();
-          const aId = e.dataTransfer.getData('text/asset-id');
-          if (aId) onMoveAssetToFolder(aId, null);
-        }}
-        className="flex-1 overflow-y-auto p-3 space-y-3"
-      >
-        {/* Folders Section */}
-        {folders.length > 0 && (
-          <div className="space-y-1.5">
-            <div className="text-[10px] uppercase font-semibold text-slate-400 px-1 tracking-wider">
-              โฟลเดอร์จัดเก็บ (Folders) - ลากไฟล์มาวางที่โฟลเดอร์ได้
+              {/* Upload & Cloud Buttons */}
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="py-1.5 px-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-medium flex items-center justify-center gap-1 shadow-2xs transition"
+                >
+                  <UploadCloud className="w-3.5 h-3.5" />
+                  <span>+ เพิ่มสื่อ</span>
+                </button>
+
+                <button
+                  onClick={handleImportGoogleDrive}
+                  className="py-1.5 px-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded text-xs font-medium flex items-center justify-center gap-1 shadow-2xs transition"
+                >
+                  <FolderSearch className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Google Drive</span>
+                </button>
+              </div>
+
+              {/* Search input */}
+              <div className="relative mt-2">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
+                <input
+                  type="text"
+                  placeholder="ค้นหาชื่อไฟล์สื่อ..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1 bg-white border border-slate-200 rounded text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Media Type Filter Chips */}
+              <div className="flex items-center gap-1 mt-2">
+                {(['all', 'video', 'audio', 'image'] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setFilter(t)}
+                    className={`px-2 py-0.5 rounded text-[10px] font-medium transition capitalize ${
+                      filter === t
+                        ? 'bg-slate-800 text-white shadow-2xs'
+                        : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
+                    }`}
+                  >
+                    {t === 'all' ? 'ทั้งหมด' : t === 'video' ? 'วิดีโอ' : t === 'audio' ? 'เสียง' : 'ภาพ'}
+                  </button>
+                ))}
+
+                <button
+                  onClick={handleCreateNewFolder}
+                  title="สร้างโฟลเดอร์ใหม่"
+                  className="ml-auto p-1 text-slate-500 hover:text-slate-800 hover:bg-slate-200 rounded transition"
+                >
+                  <FolderPlus className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
 
-            {folders.map((folder) => {
-              const folderAssets = filteredAssets.filter((a) => a.folderId === folder.id);
-              const isOpen = folder.isOpen !== false;
-              const isDropTarget = dropTargetFolderId === folder.id;
-
-              return (
-                <div 
-                  key={folder.id} 
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setDropTargetFolderId(folder.id);
-                  }}
-                  onDragLeave={(e) => {
-                    e.stopPropagation();
-                    if (dropTargetFolderId === folder.id) setDropTargetFolderId(null);
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const aId = e.dataTransfer.getData('text/asset-id');
-                    if (aId) {
-                      onMoveAssetToFolder(aId, folder.id);
-                    }
-                    setDropTargetFolderId(null);
-                  }}
-                  className={`rounded border transition-all overflow-hidden ${
-                    isDropTarget 
-                      ? 'border-amber-500 bg-amber-50/80 ring-2 ring-amber-400 ring-inset shadow-md' 
-                      : 'border-slate-200 bg-slate-50/50'
-                  }`}
-                >
-                  {/* Folder Header */}
-                  <div
-                    onClick={() => onToggleFolder(folder.id)}
-                    className="p-2 flex items-center justify-between hover:bg-slate-100 cursor-pointer text-xs font-medium text-slate-800 group"
-                  >
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      {isOpen ? (
-                        <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
-                      ) : (
-                        <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
-                      )}
-                      {isOpen ? (
-                        <FolderOpen className="w-4 h-4 text-amber-500" />
-                      ) : (
-                        <Folder className="w-4 h-4 text-amber-500" />
-                      )}
-                      <span className="truncate">{folder.name}</span>
-                      {isDropTarget && (
-                        <span className="text-[10px] text-amber-700 bg-amber-100 px-1 py-0.2 rounded font-doc animate-pulse">
-                          วางไฟล์ลงที่นี่
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] font-mono text-slate-400 bg-white px-1.5 py-0.5 rounded border border-slate-200">
-                        {folderAssets.length}
-                      </span>
-                      <button
-                        onClick={(e) => handleDeleteFolder(folder, e)}
-                        title="ลบโฟลเดอร์"
-                        className="p-1 text-slate-400 hover:text-rose-600 rounded opacity-0 group-hover:opacity-100 transition"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* List-Down Assets inside this folder */}
-                  {isOpen && (
-                    <div className="p-1.5 pt-0 space-y-1 bg-white border-t border-slate-200">
-                      {folderAssets.length === 0 ? (
-                        <div className="py-3 text-center text-[11px] text-slate-400 font-doc">
-                          {isDropTarget ? 'ปล่อยเมาส์เพื่อวางไฟล์ในโฟลเดอร์นี้' : 'โฟลเดอร์ว่างเปล่า (ลากไฟล์มาใส่ได้)'}
-                        </div>
-                      ) : (
-                        folderAssets.map((asset) => renderAssetItem(asset))
-                      )}
-                    </div>
-                  )}
+            {/* Asset List & Drag-and-Drop Area */}
+            <div 
+              onDragOver={(e) => { e.preventDefault(); setIsDraggingOver(true); }}
+              onDragLeave={() => setIsDraggingOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setIsDraggingOver(false);
+                if (e.dataTransfer.files) handleProcessFiles(e.dataTransfer.files);
+              }}
+              className={`flex-1 overflow-y-auto p-2.5 space-y-1.5 ${isDraggingOver ? 'bg-blue-50/80 ring-2 ring-blue-400 ring-inset' : ''}`}
+            >
+              {filteredAssets.length === 0 ? (
+                <div className="text-center py-10 text-slate-400 space-y-2">
+                  <UploadCloud className="w-10 h-10 mx-auto text-slate-300 stroke-[1.5]" />
+                  <p className="text-xs font-doc">ยังไม่มีไฟล์สื่อในหมวดนี้</p>
+                  <p className="text-[11px] text-slate-400">ลากไฟล์ลงที่นี่ หรือกดปุ่ม "+ เพิ่มสื่อ"</p>
                 </div>
-              );
-            })}
+              ) : (
+                filteredAssets.map((asset) => {
+                  const isActive = activeAssetId === asset.id;
+                  return (
+                    <div
+                      key={asset.id}
+                      onClick={() => onSelectAsset(asset)}
+                      className={`p-2 rounded border flex items-center justify-between cursor-pointer transition ${
+                        isActive
+                          ? 'bg-blue-50/80 border-blue-400 ring-1 ring-blue-400 shadow-2xs'
+                          : 'bg-white border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0 pr-1">
+                        <div className={`w-8 h-8 rounded shrink-0 flex items-center justify-center text-white ${asset.color || 'bg-blue-600'}`}>
+                          {asset.type === 'video' ? <Video className="w-4 h-4" /> : asset.type === 'audio' ? <Music className="w-4 h-4" /> : <ImageIcon className="w-4 h-4" />}
+                        </div>
+                        <div className="min-w-0 truncate">
+                          <div className="text-xs font-medium text-slate-800 truncate">{asset.name}</div>
+                          <div className="text-[10px] text-slate-400 font-mono">
+                            {asset.size} {asset.duration ? `• ${asset.duration}s` : ''}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onAddToTimeline(asset); }}
+                          title="แทรกลงไทม์ไลน์ที่ตำแหน่งเคอร์เซอร์ (Add to Timeline)"
+                          className="p-1 text-blue-600 hover:bg-blue-100 rounded transition"
+                        >
+                          <PlusCircle className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={(e) => handleRename(asset, e)}
+                          title="เปลี่ยนชื่อ"
+                          className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={(e) => handleDelete(asset, e)}
+                          title="ลบ"
+                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={(e) => e.target.files && handleProcessFiles(e.target.files)}
+              multiple
+              className="hidden"
+              accept="video/*,audio/*,image/*"
+            />
           </div>
         )}
 
-        {/* Root Assets (Not in folder) */}
-        <div 
-          onDragOver={(e) => { e.preventDefault(); }}
-          onDrop={(e) => {
-            e.preventDefault();
-            const aId = e.dataTransfer.getData('text/asset-id');
-            if (aId) onMoveAssetToFolder(aId, null);
-          }}
-          className="space-y-1.5"
-        >
-          <div className="text-[10px] uppercase font-semibold text-slate-400 px-1 tracking-wider flex justify-between">
-            <span>{folders.length > 0 ? 'ไฟล์ทั่วไป (General Assets)' : 'รายการไฟล์ทั้งหมด (All Assets)'}</span>
-            {folders.length > 0 && <span className="text-[9px] text-slate-400 font-doc font-normal">ลากไฟล์ลงด้านล่างนี้เพื่อนำออกจากโฟลเดอร์</span>}
-          </div>
+        {/* =========================================================
+            TAB 2: FONT & TEXT STUDIO (แบบอักษร)
+            ========================================================= */}
+        {activeTab === 'font' && (
+          <div className="flex-1 flex flex-col min-h-0 overflow-y-auto p-3 space-y-4 font-sans">
+            {/* Title */}
+            <div className="border-b border-app-border pb-2.5">
+              <span className="text-xs font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                <Type className="w-4 h-4 text-purple-600" />
+                <span>แบบอักษร & ข้อความ (Font Studio)</span>
+              </span>
+              <p className="text-[11px] text-slate-500 font-doc mt-0.5">
+                เพิ่มข้อความไตเติ้ล ซับไตเติ้ล และเลือกฟอนต์ภาษาไทยยอดนิยม
+              </p>
+            </div>
 
-          {filteredAssets.filter((a) => (folders.length > 0 ? !a.folderId : true)).length === 0 ? (
-            <div className="text-center py-8 px-4 border border-dashed border-slate-200 rounded text-slate-400">
-              <UploadCloud className="w-7 h-7 mx-auto mb-1.5 opacity-40 text-slate-400" />
-              <p className="text-xs font-doc">ยังไม่มีไฟล์สื่อในคลัง</p>
-              <button 
-                onClick={() => fileInputRef.current?.click()}
-                className="mt-2 text-xs text-blue-600 hover:underline font-medium"
+            {/* Quick Text Add Buttons (Canva Style) */}
+            <div className="space-y-2">
+              <label className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider">
+                ➕ เพิ่มกล่องข้อความทันที
+              </label>
+
+              <button
+                onClick={() => onAddTextClip({ 
+                  name: 'หัวเรื่องใหญ่', 
+                  content: 'หัวเรื่องใหญ่ (Heading)',
+                  effect: { fontSize: 38, bold: true, fontFamily: 'Prompt, sans-serif' }
+                })}
+                className="w-full p-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded text-left font-bold text-sm shadow-2xs transition flex items-center justify-between"
               >
-                + นำเข้าไฟล์จริงจากเครื่อง
+                <span>+ เพิ่มหัวเรื่องใหญ่ (Heading)</span>
+                <span className="text-[10px] font-mono opacity-80">38px Bold</span>
+              </button>
+
+              <button
+                onClick={() => onAddTextClip({ 
+                  name: 'หัวข้อย่อย', 
+                  content: 'หัวข้อย่อย (Subheading)',
+                  effect: { fontSize: 26, bold: true, fontFamily: 'Prompt, sans-serif' }
+                })}
+                className="w-full p-2 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 rounded text-left font-semibold text-xs transition flex items-center justify-between"
+              >
+                <span>+ เพิ่มหัวข้อย่อย (Subheading)</span>
+                <span className="text-[10px] font-mono text-purple-600">26px Semi</span>
+              </button>
+
+              <button
+                onClick={() => onAddTextClip({ 
+                  name: 'เนื้อหาข้อความ', 
+                  content: 'เนื้อหาข้อความและคำอธิบายของคุณ...',
+                  effect: { fontSize: 18, bold: false, fontFamily: 'Sarabun, sans-serif' }
+                })}
+                className="w-full p-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded text-left text-xs transition flex items-center justify-between"
+              >
+                <span>+ เพิ่มเนื้อหาข้อความ (Body Text)</span>
+                <span className="text-[10px] font-mono text-slate-400">18px</span>
               </button>
             </div>
-          ) : (
-            filteredAssets
-              .filter((a) => (folders.length > 0 ? !a.folderId : true))
-              .map((asset) => renderAssetItem(asset))
-          )}
-        </div>
-      </div>
 
-      {/* Footer Storage Spec */}
-      <div className="p-3 border-t border-app-border bg-slate-50 text-[11px] text-slate-500 flex justify-between items-center">
-        <span>จำกัดขนาดวิดีโอ</span>
-        <span className="font-mono text-slate-700 font-medium">สูงสุด 4 GB / ไฟล์</span>
-      </div>
-    </aside>
-  );
+            {/* Text Style Presets */}
+            <div className="space-y-2 pt-2 border-t border-slate-200">
+              <label className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-amber-500" />
+                <span>สไตล์ข้อความสำเร็จรูป (Preset Styles)</span>
+              </label>
 
-  function renderAssetItem(asset: MediaAsset) {
-    const isSelected = activeAssetId === asset.id;
-    const isMissing = !!asset.isMissing;
+              <div className="grid grid-cols-2 gap-1.5">
+                {[
+                  { name: '✨ นีออนเรืองแสง', effect: { effectType: 'neon', shadowColor: '#06B6D4', color: '#FFFFFF', fontSize: 32 } },
+                  { name: '🏆 3D Shadow Gold', effect: { effectType: '3d', shadowColor: '#000000', color: '#F59E0B', fontSize: 32 } },
+                  { name: '🏷️ กรอบพาดหัวข่าว', effect: { effectType: 'boxed', boxBgColor: 'rgba(15, 23, 42, 0.9)', color: '#FFFFFF', fontSize: 28 } },
+                  { name: '🌈 Gradient Sunset', effect: { effectType: 'gradient', gradientColors: ['#F43F5E', '#F59E0B'] as [string, string], fontSize: 30 } },
+                  { name: '⚡ Glitch Tech', effect: { effectType: 'outline', strokeColor: '#9333EA', strokeWidth: 2, color: '#00FFFF', fontSize: 30 } },
+                  { name: '🎬 ซับไตเติ้ลหนัง', effect: { effectType: 'shadow', shadowColor: 'rgba(0,0,0,0.95)', color: '#FFFFFF', fontSize: 24 } },
+                ].map((p, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => onAddTextClip({ name: p.name, content: p.name, effect: p.effect as any })}
+                    className="p-2 bg-slate-900 text-white rounded text-[11px] text-center border border-slate-700 hover:border-purple-400 hover:shadow-md transition truncate"
+                  >
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-    return (
-      <div
-        key={asset.id}
-        draggable={!isMissing}
-        onDragStart={(e) => {
-          e.dataTransfer.setData('text/asset-id', asset.id);
-          e.dataTransfer.setData('text/plain', asset.id);
-        }}
-        onTouchStart={() => {
-          touchHoldTimer.current = setTimeout(async () => {
-            // Touch hold action to move folder
-            if (folders.length > 0) {
-              const options: Record<string, string> = { 'root': '📂 ย้ายออกไปที่รูทหลัก (General Assets)' };
-              folders.forEach(f => {
-                options[f.id] = `📁 ${f.name}`;
-              });
-              const { value: targetFId } = await AppSwal.fire({
-                title: 'ย้ายไฟล์ไปยังโฟลเดอร์',
-                input: 'select',
-                inputOptions: options,
-                inputValue: asset.folderId || 'root',
-                showCancelButton: true,
-                confirmButtonText: 'ย้ายไฟล์',
-                cancelButtonText: 'ยกเลิก',
-              });
-              if (targetFId) {
-                onMoveAssetToFolder(asset.id, targetFId === 'root' ? null : targetFId);
-              }
-            }
-          }, 1500);
-        }}
-        onTouchEnd={() => {
-          if (touchHoldTimer.current) clearTimeout(touchHoldTimer.current);
-        }}
-        onClick={() => {
-          if (isMissing) {
-            onRelinkAsset(asset);
-          } else {
-            onSelectAsset(asset);
-          }
-        }}
-        onDoubleClick={(e) => handleRename(asset, e)}
-        title={isMissing ? `⚠️ ไม่พบไฟล์: ${asset.name}\nคลิกเพื่อค้นหาและเชื่อมโยงไฟล์ใหม่ (Relink)` : `${asset.name}\n• คลิกซ้ายเพื่อเลือกและแทรกที่เส้นแดง Timeline\n• ดับเบิลคลิกเพื่อเปลี่ยนชื่อ\n• คลิกค้างเพื่อลากไปใส่ในโฟลเดอร์`}
-        className={`group relative p-2.5 rounded border transition cursor-grab active:cursor-grabbing flex items-center justify-between ${
-          isMissing 
-            ? 'opacity-60 bg-amber-50/50 border-amber-300 border-dashed hover:opacity-100 hover:border-amber-400' 
-            : isSelected
-            ? 'bg-blue-50/80 border-blue-400 shadow-2xs'
-            : 'bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300'
-        }`}
-      >
-        <div className="flex items-center gap-2.5 min-w-0 pr-1">
-          <div className={`w-8 h-8 rounded border flex items-center justify-center shrink-0 ${
-            isMissing ? 'bg-amber-100/80 border-amber-300 text-amber-600' : 'bg-slate-100 border-slate-200'
-          }`}>
-            {isMissing ? <AlertTriangle className="w-4 h-4 text-amber-600" /> : getMediaIcon(asset.type)}
+            {/* Thai Fonts Library & Upload */}
+            <div className="space-y-2 pt-2 border-t border-slate-200">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider">
+                  🔤 เลือกแบบอักษร (Font Library)
+                </label>
+                <button
+                  onClick={() => fontUploadRef.current?.click()}
+                  className="px-2 py-0.5 bg-purple-100 hover:bg-purple-200 text-purple-800 rounded text-[10px] font-medium flex items-center gap-1 transition"
+                >
+                  <Upload className="w-3 h-3" />
+                  <span>+ อัปโหลดฟอนต์</span>
+                </button>
+              </div>
+
+              {/* Font Search */}
+              <input
+                type="text"
+                placeholder="ค้นหาแบบอักษร..."
+                value={fontSearchQuery}
+                onChange={(e) => setFontSearchQuery(e.target.value)}
+                className="w-full px-2.5 py-1 bg-white border border-slate-200 rounded text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-purple-500"
+              />
+
+              {/* Font List */}
+              <div className="space-y-1 max-h-56 overflow-y-auto pr-1">
+                {allFonts
+                  .filter((f) => f.name.toLowerCase().includes(fontSearchQuery.toLowerCase()))
+                  .map((font, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        if (selectedClip?.type === 'text') {
+                          onUpdateClipEffect(selectedClip.id, selectedClip.textContent || selectedClip.name, {
+                            ...(selectedClip.textEffect || { fontSize: 28, color: '#FFF', bold: true, italic: false, align: 'center', effectType: 'shadow' }),
+                            fontFamily: font.family,
+                          });
+                          alertSuccess('เปลี่ยนฟอนต์สำเร็จ!', `กำหนดแบบอักษร "${font.name}" ให้กับข้อความที่เลือกแล้ว`);
+                        } else {
+                          onAddTextClip({
+                            name: `ข้อความ (${font.name})`,
+                            content: `ข้อความแบบอักษร ${font.name}`,
+                            effect: { fontFamily: font.family }
+                          });
+                        }
+                      }}
+                      className="w-full p-2 bg-white hover:bg-purple-50 border border-slate-200 hover:border-purple-300 rounded text-left transition flex items-center justify-between group"
+                    >
+                      <span style={{ fontFamily: font.family }} className="text-sm text-slate-800 group-hover:text-purple-900 truncate">
+                        {font.name}
+                      </span>
+                      {font.isUploaded && (
+                        <span className="px-1.5 py-0.2 bg-purple-100 text-purple-800 rounded font-mono text-[9px]">
+                          ของคุณ
+                        </span>
+                      )}
+                    </button>
+                  ))}
+              </div>
+            </div>
+
+            <input
+              type="file"
+              ref={fontUploadRef}
+              onChange={handleCustomFontUpload}
+              className="hidden"
+              accept=".ttf,.otf,.woff,.woff2"
+            />
           </div>
-          <div className="min-w-0">
-            <p className={`text-xs font-medium truncate ${isMissing ? 'text-amber-900 font-semibold line-through decoration-amber-400' : 'text-slate-800'}`}>
-              {asset.name}
-            </p>
-            <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-mono mt-0.5">
-              {isMissing ? (
-                <span className="text-[9px] bg-amber-200/80 text-amber-900 px-1 py-0.2 rounded font-sans font-medium">
-                  ⚠️ ไม่พบไฟล์ (คลิกเพื่อ Relink)
-                </span>
+        )}
+
+        {/* =========================================================
+            TAB 3: ANIMATION & MOTION FX (อนิเมชั่น)
+            ========================================================= */}
+        {activeTab === 'animation' && (
+          <div className="flex-1 flex flex-col min-h-0 overflow-y-auto p-3 space-y-4 font-sans">
+            {/* Title */}
+            <div className="border-b border-app-border pb-2.5">
+              <span className="text-xs font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-amber-500" />
+                <span>อนิเมชั่น & เอฟเฟกต์ (Animation FX)</span>
+              </span>
+              <p className="text-[11px] text-slate-500 font-doc mt-0.5">
+                กำหนดการเคลื่อนไหว Fade In/Out และ Transition ให้กับวิดีโอ, ภาพ และข้อความ
+              </p>
+            </div>
+
+            {/* Target Clip Status Badge */}
+            <div className={`p-2.5 rounded border text-xs ${
+              selectedClip 
+                ? 'bg-blue-50 border-blue-200 text-blue-900' 
+                : 'bg-amber-50 border-amber-200 text-amber-900'
+            }`}>
+              {selectedClip ? (
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold truncate">🎯 คลิปที่เลือก: {selectedClip.name}</span>
+                  <span className="px-1.5 py-0.2 bg-blue-200 text-blue-900 rounded font-mono text-[10px] capitalize">
+                    {selectedClip.type}
+                  </span>
+                </div>
               ) : (
-                <>
-                  <span className="capitalize px-1 py-0.2 bg-slate-100 rounded text-slate-600 border border-slate-200">{asset.type}</span>
-                  {asset.duration && <span>{asset.duration}s</span>}
-                  {asset.size && <span>• {asset.size}</span>}
-                </>
+                <div>
+                  <span className="font-semibold">💡 ยังไม่ได้เลือกคลิป:</span>
+                  <p className="text-[11px] text-amber-800 mt-0.5">
+                    คลิกเลือกคลิปบนไทม์ไลน์เพื่อกำหนดแอนิเมชั่นให้ตรงเป้าหมาย
+                  </p>
+                </div>
               )}
             </div>
+
+            {/* In Animation (เปิดตัว) */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-slate-700 text-xs font-semibold">
+                <span className="flex items-center gap-1">
+                  <Play className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>เปิดตัว (In Animation):</span>
+                </span>
+                <span className="text-[10px] font-mono text-emerald-600 font-bold capitalize">
+                  {currentMotion.inAnimation || 'none'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-1">
+                {[
+                  { id: 'none', label: 'None' },
+                  { id: 'fade-in', label: 'Fade In' },
+                  { id: 'slide-up', label: 'Slide Up' },
+                  { id: 'slide-down', label: 'Slide Down' },
+                  { id: 'slide-left', label: 'Slide L' },
+                  { id: 'slide-right', label: 'Slide R' },
+                  { id: 'pop-in', label: 'Pop In' },
+                  { id: 'bounce-in', label: 'Bounce' },
+                  { id: 'flip-in', label: 'Flip 3D' },
+                  { id: 'typewriter', label: 'Typewriter' },
+                  { id: 'spin-in', label: 'Spin In' },
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => handleSelectMotion('inAnimation', m.id)}
+                    className={`py-1.5 px-1 rounded text-center text-[10px] border transition ${
+                      currentMotion.inAnimation === m.id
+                        ? 'bg-emerald-600 text-white border-emerald-600 font-medium shadow-2xs'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Out Animation (ปิดท้าย) */}
+            <div className="space-y-1.5 pt-2 border-t border-slate-200">
+              <div className="flex items-center justify-between text-slate-700 text-xs font-semibold">
+                <span className="flex items-center gap-1">
+                  <Play className="w-3.5 h-3.5 text-rose-600 rotate-180" />
+                  <span>ปิดท้าย (Out Animation):</span>
+                </span>
+                <span className="text-[10px] font-mono text-rose-600 font-bold capitalize">
+                  {currentMotion.outAnimation || 'none'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-1">
+                {[
+                  { id: 'none', label: 'None' },
+                  { id: 'fade-out', label: 'Fade Out' },
+                  { id: 'slide-down', label: 'Slide Down' },
+                  { id: 'slide-up', label: 'Slide Up' },
+                  { id: 'slide-left', label: 'Slide L' },
+                  { id: 'slide-right', label: 'Slide R' },
+                  { id: 'scale-out', label: 'Scale Out' },
+                  { id: 'blur-out', label: 'Blur Out' },
+                  { id: 'fade-black', label: 'Fade Black' },
+                ].map((o) => (
+                  <button
+                    key={o.id}
+                    onClick={() => handleSelectMotion('outAnimation', o.id)}
+                    className={`py-1.5 px-1 rounded text-center text-[10px] border transition ${
+                      currentMotion.outAnimation === o.id
+                        ? 'bg-rose-600 text-white border-rose-600 font-medium shadow-2xs'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Loop Animation (วนซ้ำต่อเนื่อง) */}
+            <div className="space-y-1.5 pt-2 border-t border-slate-200">
+              <div className="flex items-center justify-between text-slate-700 text-xs font-semibold">
+                <span className="flex items-center gap-1">
+                  <RotateCw className="w-3.5 h-3.5 text-blue-600" />
+                  <span>วนซ้ำต่อเนื่อง (Loop / Hover):</span>
+                </span>
+                <span className="text-[10px] font-mono text-blue-600 font-bold capitalize">
+                  {currentMotion.loopAnimation || 'none'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-1">
+                {[
+                  { id: 'none', label: 'None' },
+                  { id: 'pulse', label: 'Pulse เต้น' },
+                  { id: 'floating', label: 'Floating ลอย' },
+                  { id: 'shake', label: 'Shake สั่น' },
+                  { id: 'glow-wave', label: 'Glow Wave' },
+                ].map((l) => (
+                  <button
+                    key={l.id}
+                    onClick={() => handleSelectMotion('loopAnimation', l.id)}
+                    className={`py-1.5 px-1 rounded text-center text-[10px] border transition ${
+                      currentMotion.loopAnimation === l.id
+                        ? 'bg-blue-600 text-white border-blue-600 font-medium shadow-2xs'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    {l.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Transitions (เปลี่ยนฉาก) */}
+            <div className="space-y-1.5 pt-2 border-t border-slate-200">
+              <div className="flex items-center justify-between text-slate-700 text-xs font-semibold">
+                <span className="flex items-center gap-1">
+                  <Zap className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>เอฟเฟกต์เปลี่ยนผ่าน (Transitions):</span>
+                </span>
+                <span className="text-[10px] font-mono text-indigo-600 font-bold capitalize">
+                  {currentTransition}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-1">
+                {[
+                  { id: 'none', label: 'ไม่มี' },
+                  { id: 'fade-in', label: 'Fade In' },
+                  { id: 'fade-out', label: 'Fade Out' },
+                  { id: 'cross-dissolve', label: 'Dissolve' },
+                  { id: 'fade-black', label: 'Fade Black' },
+                  { id: 'slide-left', label: 'Slide L' },
+                  { id: 'slide-right', label: 'Slide R' },
+                  { id: 'zoom-in', label: 'Zoom In' },
+                  { id: 'wipe', label: 'Wipe' },
+                  { id: 'glitch', label: 'Glitch' },
+                  { id: 'blur', label: 'Blur' },
+                ].map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => handleSelectTransition(t.id as TransitionType)}
+                    className={`py-1.5 px-1 rounded text-center text-[10px] border transition ${
+                      currentTransition === t.id
+                        ? 'bg-indigo-600 text-white border-indigo-600 font-medium shadow-2xs'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Animation Speed Slider */}
+            <div className="space-y-1 pt-2 border-t border-slate-200">
+              <div className="flex justify-between text-xs text-slate-700 font-semibold">
+                <span>ความเร็วแอนิเมชัน (Duration):</span>
+                <span className="font-mono text-amber-600">{currentMotion.duration || 0.6}s</span>
+              </div>
+              <input
+                type="range"
+                min="0.2"
+                max="2.0"
+                step="0.1"
+                value={currentMotion.duration || 0.6}
+                onChange={(e) => handleSelectMotion('duration', Number(e.target.value))}
+                className="w-full h-1.5 bg-slate-200 rounded appearance-none cursor-pointer accent-amber-500"
+              />
+            </div>
           </div>
-        </div>
-
-        {/* Quick Action Icons */}
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
-          {isMissing ? (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onRelinkAsset(asset);
-              }}
-              title="ค้นหาและเชื่อมโยงไฟล์ใหม่ (Relink)"
-              className="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-[10px] font-medium flex items-center gap-1 shadow-2xs"
-            >
-              <FolderSearch className="w-3 h-3" />
-              <span>Relink</span>
-            </button>
-          ) : (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onAddToTimeline(asset);
-              }}
-              title="แทรกลงในไทม์ไลน์ที่ตำแหน่งเส้นแดง (Add to Timeline at Playhead)"
-              className="p-1 text-blue-600 hover:bg-blue-100 rounded transition"
-            >
-              <PlusCircle className="w-4 h-4" />
-            </button>
-          )}
-
-          <button
-            onClick={(e) => handleRename(asset, e)}
-            title="เปลี่ยนชื่อไฟล์ (Rename)"
-            className="p-1 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded transition"
-          >
-            <Edit3 className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={(e) => handleDelete(asset, e)}
-            title="ลบไฟล์สื่อ"
-            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-    );
-  }
+        )}
+      </aside>
+    </div>
+  );
 };

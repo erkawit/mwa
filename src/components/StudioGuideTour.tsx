@@ -45,33 +45,33 @@ export const StudioGuideTour: React.FC<StudioGuideTourProps> = ({
     {
       stepNumber: 1,
       targetArea: 'sidebar',
-      title: 'คลังสื่อและการจัดการไฟล์ (Media Assets & Folders)',
-      subtitle: 'พื้นที่ฝั่งซ้ายสำหรับนำเข้าและจัดระเบียบไฟล์วิดีโอ เสียง รูปภาพ ทั้งหมดของโปรเจกต์',
+      title: 'แถบเมนูหลักฝั่งซ้าย (3-in-1 Navigation Dock: Media, Font, Animation)',
+      subtitle: 'แถบเครื่องมือหลักฝั่งซ้ายแบบ Canva Style แบ่งออกเป็น 3 เมนูหลักเพื่อการเข้าถึงฟังก์ชันอย่างรวดเร็ว',
       icon: <FolderPlus className="w-5 h-5 text-blue-400" />,
       badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-400/30',
       items: [
         {
-          icon: '📤',
-          title: 'อัปโหลดสื่อ (Upload Media)',
-          description: 'คลิกปุ่ม "+ เพิ่มสื่อ" เพื่อนำเข้าไฟล์วิดีโอ (MP4, WebM, MOV), ไฟล์เสียง (MP3, WAV) หรือรูปภาพ (PNG, JPG)'
+          icon: '📁',
+          title: 'คลังสื่อ (Media)',
+          description: 'นำเข้าไฟล์วิดีโอ, เสียง, รูปภาพ, จัดระเบียบโฟลเดอร์ และเชื่อมโยง Google Drive'
         },
         {
-          icon: '📂',
-          title: 'จัดการโฟลเดอร์ (Folder Organization)',
-          description: 'สร้างและจัดการโฟลเดอร์แยกประเภทสื่อ เช่น วิดีโอหลัก, ซาวด์เอฟเฟกต์, รูปภาพ เพื่อความสะดวกรวดเร็ว'
+          icon: '🔤',
+          title: 'แบบอักษร (Font & Text)',
+          description: 'เพิ่มหัวเรื่อง/ข้อความทันที, สไตล์สำเร็จรูป (Neon, 3D Gold, Boxed) และเลือกฟอนต์ภาษาไทยยอดนิยม'
         },
         {
-          icon: '☁️',
-          title: 'เชื่อมต่อ Google Drive',
-          description: 'ดึงไฟล์สื่อและทรัพยากรตรงจาก Google Drive ของคุณโดยไม่ต้องเปลืองพื้นที่จัดเก็บในเครื่อง'
+          icon: '✨',
+          title: 'อนิเมชั่น (Animation FX)',
+          description: 'กำหนดการเปิดตัว (In: Fade In, Slide, Pop, Bounce), ปิดท้าย (Out) และเอฟเฟกต์เปลี่ยนฉาก (Transitions)'
         },
         {
           icon: '🔗',
           title: 'ระบบ Relink Media อัจฉริยะ',
-          description: 'หากไฟล์ถูกย้ายหรือหาไม่พบ ระบบมีเครื่องมือค้นหาและเชื่อมโยงไฟล์ใหม่ให้อัตโนมัติในคลิกเดียว'
+          description: 'หากไฟล์ถูกย้ายหรือหาไม่พบ สามารถกด "ลิงก์ไฟล์ใหม่" เพื่อแทนที่และนำเข้าสู่คลังสื่ออัตโนมัติ'
         }
       ],
-      tip: '💡 เคล็ดลับ: สามารถคลิกปุ่ม "+" บนการ์ดสื่อเพื่อเพิ่มคลิปลงบนไทม์ไลน์ได้ทันที'
+      tip: '💡 เคล็ดลับ: สามารถคลิกสลับแท็บ "คลังสื่อ", "แบบอักษร", และ "อนิเมชั่น" ที่แถบซ้ายมือได้ตลอดเวลา'
     },
     {
       stepNumber: 2,
