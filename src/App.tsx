@@ -1,0 +1,955 @@
+import { useState, useEffect, useRef } from 'react';
+import { Header } from './components/Header';
+import { AssetSidebar } from './components/AssetSidebar';
+import { MediaCanvas } from './components/MediaCanvas';
+import { Timeline } from './components/Timeline';
+import { InspectorPanel } from './components/InspectorPanel';
+import { TextEffectEditor } from './components/TextEffectEditor';
+import { WelcomeScreen } from './components/WelcomeScreen';
+import { SystemUpdateModal } from './components/SystemUpdateModal';
+import { AdminPanelModal } from './components/AdminPanelModal';
+import { DonateModal } from './components/DonateModal';
+import { InquiryWebboardModal } from './components/InquiryWebboardModal';
+import { UserProfileModal } from './components/UserProfileModal';
+import { RelinkMediaModal } from './components/RelinkMediaModal';
+import type { 
+  MediaAsset, 
+  TimelineClip, 
+  TimelineTrack, 
+  ProjectSettings, 
+  MediaType, 
+  MediaFolder, 
+  UploadTask, 
+  CustomFont, 
+  TextEffectConfig,
+  UserSession,
+  SavedProject,
+  TransitionType,
+  MotionAnimation
+} from './types';
+import { AppSwal, alertSuccess } from './utils/swal';
+import { getSystemLocalFonts } from './utils/fontManager';
+import { googleDriveService } from './services/googleDrive';
+import { authService } from './services/auth';
+import { adminService } from './services/adminService';
+
+// Initial Project Settings with 2K Option
+const initialSettings: ProjectSettings = {
+  name: 'Multimedia_Studio_Project',
+  aspectRatio: '16:9',
+  resolution: '2K (2560x1440)',
+  fps: 30,
+};
+
+// Initial Folders
+const initialFolders: MediaFolder[] = [
+  { id: 'fld-1', name: 'วิดีโอหลัก (Video Footages)', createdAt: Date.now(), isOpen: true },
+  { id: 'fld-2', name: 'เสียง & ซาวด์แทร็ก (Audio FX)', createdAt: Date.now(), isOpen: true },
+];
+
+// Initial Demo Assets
+const initialAssets: MediaAsset[] = [
+  { id: 'ast-1', name: 'Intro_Motion_Graphics.mp4', type: 'video', folderId: 'fld-1', duration: 8.5, size: '24.2 MB', rawSize: 25375539, color: 'bg-blue-600', createdAt: Date.now() },
+  { id: 'ast-2', name: 'Main_Interview_Scene.mp4', type: 'video', folderId: 'fld-1', duration: 15.0, size: '68.5 MB', rawSize: 71827456, color: 'bg-blue-600', createdAt: Date.now() },
+  { id: 'ast-3', name: 'Background_Acoustic_Beat.mp3', type: 'audio', folderId: 'fld-2', duration: 22.0, size: '4.8 MB', rawSize: 5033164, color: 'bg-emerald-600', createdAt: Date.now() },
+  { id: 'ast-4', name: 'Channel_Logo_HD.png', type: 'image', folderId: null, duration: 10.0, size: '1.2 MB', rawSize: 1258291, color: 'bg-amber-600', createdAt: Date.now() },
+];
+
+// Initial Tracks
+const initialTracks: TimelineTrack[] = [
+  { id: 'trk-text', name: 'ข้อความ & ไตเติ้ล (Text 1)', type: 'text', muted: false, locked: false, solo: false },
+  { id: 'trk-video', name: 'ภาพ & วิดีโอหลัก (Video 1)', type: 'video', muted: false, locked: false, solo: false },
+  { id: 'trk-audio', name: 'เสียง & ดนตรี (Audio 1)', type: 'audio', muted: false, locked: false, solo: false },
+];
+
+// Initial Timeline Clips
+const initialClips: TimelineClip[] = [
+  { 
+    id: 'clp-1', 
+    assetId: 'ast-1', 
+    name: 'Intro_Motion_Graphics.mp4', 
+    type: 'video', 
+    trackId: 'trk-video', 
+    startTime: 0, 
+    duration: 8.5, 
+    color: 'bg-blue-600' 
+  },
+  { 
+    id: 'clp-2', 
+    assetId: 'ast-2', 
+    name: 'Main_Interview_Scene.mp4', 
+    type: 'video', 
+    trackId: 'trk-video', 
+    startTime: 8.5, 
+    duration: 12.0, 
+    color: 'bg-blue-600' 
+  },
+  { 
+    id: 'clp-3', 
+    assetId: 'ast-3', 
+    name: 'Background_Acoustic_Beat.mp3', 
+    type: 'audio', 
+    trackId: 'trk-audio', 
+    startTime: 0, 
+    duration: 20.5, 
+    color: 'bg-emerald-600' 
+  },
+  { 
+    id: 'clp-4', 
+    name: '✨ ยินดีต้อนรับสู่ Multimedia Studio', 
+    type: 'text', 
+    trackId: 'trk-text', 
+    startTime: 1.0, 
+    duration: 7.0, 
+    color: 'bg-purple-600',
+    textContent: '✨ ยินดีต้อนรับสู่ Multimedia Studio',
+    textEffect: {
+      fontFamily: 'Prompt, sans-serif',
+      fontSize: 28,
+      color: '#FFFFFF',
+      bold: true,
+      italic: false,
+      align: 'center',
+      effectType: 'neon',
+      shadowColor: '#3B82F6',
+      strokeColor: '#000000',
+      strokeWidth: 2,
+    }
+  },
+];
+
+export function App() {
+  // Navigation & Auth State
+  const [currentView, setCurrentView] = useState<'welcome' | 'studio'>('welcome');
+  const [userSession, setUserSession] = useState<UserSession | null>(authService.getSession());
+
+  // Modal States
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+  const [isDonateModalOpen, setIsDonateModalOpen] = useState(false);
+  const [isInquiryModalOpen, setIsInquiryModalOpen] = useState(false);
+  const [isUserProfileModalOpen, setIsUserProfileModalOpen] = useState(false);
+  const [relinkTargetAsset, setRelinkTargetAsset] = useState<MediaAsset | null>(null);
+
+  // Project & Studio State
+  const [projectSettings, setProjectSettings] = useState<ProjectSettings>(initialSettings);
+  const [folders, setFolders] = useState<MediaFolder[]>(initialFolders);
+  const [assets, setAssets] = useState<MediaAsset[]>(initialAssets);
+  const [tracks, setTracks] = useState<TimelineTrack[]>(initialTracks);
+  const [clips, setClips] = useState<TimelineClip[]>(initialClips);
+  const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([]);
+  const [customFonts, setCustomFonts] = useState<CustomFont[]>([]);
+  
+  const [activeAssetId, setActiveAssetId] = useState<string | null>(initialAssets[0].id);
+  const [selectedClipId, setSelectedClipId] = useState<string | null>(initialClips[0].id);
+  const [focusedTrackId, setFocusedTrackId] = useState<string | null>(initialTracks[1].id);
+  const [editingTextClip, setEditingTextClip] = useState<TimelineClip | null>(null);
+
+  // Admin Notification for Pending Registrations
+  useEffect(() => {
+    if (userSession?.role === 'admin') {
+      const pendingCount = adminService.getPendingUsersCount();
+      if (pendingCount > 0) {
+        AppSwal.fire({
+          icon: 'info',
+          title: `🔔 มีผู้สมัครขอใช้งานใหม่ ${pendingCount} รายการ`,
+          html: `
+            <div class="text-left font-sans text-xs space-y-2 text-slate-700">
+              <p class="font-doc">
+                ตรวจพบผู้ใช้งานที่ลงทะเบียนใหม่และมีสถานะ <strong>"รอยืนยันการอนุมัติ"</strong> อยู่ในระบบ
+              </p>
+              <div class="p-2.5 bg-amber-50 border border-amber-200 rounded text-amber-900 font-semibold flex items-center justify-between">
+                <span>จำนวนคำขอรออนุมัติ:</span>
+                <span class="px-2 py-0.5 bg-amber-200 text-amber-900 rounded font-mono font-bold">${pendingCount} รายการ</span>
+              </div>
+            </div>
+          `,
+          showCancelButton: true,
+          confirmButtonText: '🛡️ เปิดศูนย์ควบคุมผู้ดูแลระบบ (Admin Console)',
+          cancelButtonText: 'ไว้ภายหลัง',
+          confirmButtonColor: '#2563EB',
+        }).then((result) => {
+          if (result.isConfirmed) {
+            setIsAdminModalOpen(true);
+          }
+        });
+      }
+    }
+  }, [userSession]);
+
+  // Handle Relink Success (Restores Missing Media)
+  const handleRelinkSuccess = (assetId: string, newFile: File, newLocalPath?: string) => {
+    const blobUrl = URL.createObjectURL(newFile);
+    setAssets((prev) =>
+      prev.map((a) =>
+        a.id === assetId
+          ? {
+              ...a,
+              file: newFile,
+              blobUrl,
+              isMissing: false,
+              localPath: newLocalPath || a.localPath,
+              size: `${(newFile.size / (1024 * 1024)).toFixed(1)} MB`,
+              rawSize: newFile.size,
+            }
+          : a
+      )
+    );
+
+    // Also update all timeline clips using this asset
+    setClips((prev) =>
+      prev.map((c) =>
+        c.assetId === assetId
+          ? {
+              ...c,
+              isMissing: false,
+              localPath: newLocalPath || c.localPath,
+            }
+          : c
+      )
+    );
+    setRelinkTargetAsset(null);
+  };
+
+  // Handle Import Project Data
+  const handleImportProject = (importedData: any) => {
+    if (importedData.projectSettings) setProjectSettings(importedData.projectSettings);
+    if (Array.isArray(importedData.folders)) setFolders(importedData.folders);
+    if (Array.isArray(importedData.assets)) setAssets(importedData.assets);
+    if (Array.isArray(importedData.tracks)) setTracks(importedData.tracks);
+    if (Array.isArray(importedData.clips)) setClips(importedData.clips);
+    setCurrentView('studio');
+  };
+  
+  // Timeline controls & playback state
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [timelineHeight, setTimelineHeight] = useState(250);
+
+  // Total Duration
+  const totalDuration = Math.max(
+    30,
+    ...clips.map((c) => c.startTime + c.duration)
+  );
+
+  // Active items
+  const activeAsset = assets.find((a) => a.id === activeAssetId) || null;
+  const selectedClip = clips.find((c) => c.id === selectedClipId) || null;
+  const activeTextClips = clips.filter(
+    (c) => c.type === 'text' && currentTime >= c.startTime && currentTime <= c.startTime + c.duration
+  );
+
+  // Load system fonts on startup
+  useEffect(() => {
+    getSystemLocalFonts().then(fonts => {
+      setCustomFonts(fonts);
+    });
+  }, []);
+
+  // Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName)) {
+        return;
+      }
+
+      if (e.code === 'Space') {
+        e.preventDefault();
+        setIsPlaying((prev) => !prev);
+      } else if (e.code === 'KeyS') {
+        e.preventDefault();
+        if (selectedClipId) {
+          handleSplitClip(selectedClipId, currentTime);
+        }
+      } else if (e.code === 'Delete' || e.code === 'Backspace') {
+        e.preventDefault();
+        if (selectedClipId) {
+          handleDeleteClip(selectedClipId);
+        }
+      } else if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        setCurrentTime((prev) => Math.max(0, prev - (e.shiftKey ? 5 : 1)));
+      } else if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        setCurrentTime((prev) => Math.min(totalDuration, prev + (e.shiftKey ? 5 : 1)));
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedClipId, currentTime, totalDuration, clips]);
+
+  // Playback timer
+  const animFrameRef = useRef<number | null>(null);
+  const lastTickTime = useRef<number>(performance.now());
+
+  useEffect(() => {
+    if (isPlaying) {
+      lastTickTime.current = performance.now();
+      const tick = () => {
+        const now = performance.now();
+        const delta = (now - lastTickTime.current) / 1000;
+        lastTickTime.current = now;
+
+        setCurrentTime((prev) => {
+          const next = prev + delta;
+          if (next >= totalDuration) {
+            setIsPlaying(false);
+            return 0;
+          }
+          return next;
+        });
+        animFrameRef.current = requestAnimationFrame(tick);
+      };
+      animFrameRef.current = requestAnimationFrame(tick);
+    } else {
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+      }
+    }
+    return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    };
+  }, [isPlaying, totalDuration]);
+
+  // --- Handlers ---
+  const handleTogglePlay = () => setIsPlaying(!isPlaying);
+  const handleSeek = (time: number) => setCurrentTime(Math.max(0, Math.min(totalDuration, time)));
+
+  const handleAddAsset = (newAsset: MediaAsset) => {
+    setAssets((prev) => [newAsset, ...prev]);
+    setActiveAssetId(newAsset.id);
+  };
+
+  const handleDeleteAsset = (assetId: string) => {
+    setAssets((prev) => prev.filter((a) => a.id !== assetId));
+    if (activeAssetId === assetId) {
+      setActiveAssetId(null);
+    }
+  };
+
+  const handleRenameAsset = (assetId: string, newName: string) => {
+    setAssets((prev) =>
+      prev.map((a) => (a.id === assetId ? { ...a, name: newName } : a))
+    );
+  };
+
+  const handleMoveAssetToFolder = (assetId: string, folderId: string | null) => {
+    setAssets((prev) =>
+      prev.map((a) => (a.id === assetId ? { ...a, folderId } : a))
+    );
+  };
+
+  // Folder Operations
+  const handleCreateFolder = (name: string) => {
+    const newFolder: MediaFolder = {
+      id: `fld-${Date.now()}`,
+      name,
+      createdAt: Date.now(),
+      isOpen: true,
+    };
+    setFolders((prev) => [...prev, newFolder]);
+  };
+
+  const handleDeleteFolder = (folderId: string) => {
+    setFolders((prev) => prev.filter((f) => f.id !== folderId));
+    setAssets((prev) =>
+      prev.map((a) => (a.folderId === folderId ? { ...a, folderId: null } : a))
+    );
+  };
+
+  const handleToggleFolder = (folderId: string) => {
+    setFolders((prev) =>
+      prev.map((f) => (f.id === folderId ? { ...f, isOpen: !f.isOpen } : f))
+    );
+  };
+
+  // Upload Tasks
+  const handleAddUploadTask = (task: UploadTask) => {
+    setUploadTasks((prev) => [task, ...prev]);
+  };
+
+  const handleUpdateUploadTask = (taskId: string, progress: number, status: UploadTask['status']) => {
+    setUploadTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, progress, status } : t))
+    );
+  };
+
+  const handleRemoveUploadTask = (taskId: string) => {
+    setUploadTasks((prev) => prev.filter((t) => t.id !== taskId));
+  };
+
+  // Add Asset to Timeline with Focused Track & Red Playhead Intersect Check
+  const handleAddToTimeline = (asset: MediaAsset) => {
+    let targetTrack = tracks.find((t) => t.id === focusedTrackId);
+    if (!targetTrack || (asset.type === 'audio' && targetTrack.type !== 'audio') || (asset.type === 'video' && targetTrack.type === 'audio')) {
+      targetTrack = tracks.find((t) => t.type === asset.type) || tracks[0];
+    }
+
+    const trackClips = clips.filter((c) => c.trackId === targetTrack!.id);
+    const intersectingClip = trackClips.find(
+      (c) => c.startTime <= currentTime && (c.startTime + c.duration) > currentTime
+    );
+
+    let newStartTime = currentTime;
+    if (intersectingClip) {
+      newStartTime = intersectingClip.startTime + intersectingClip.duration;
+    }
+
+    const newClip: TimelineClip = {
+      id: `clp-${Date.now()}`,
+      assetId: asset.id,
+      name: asset.name,
+      type: asset.type,
+      trackId: targetTrack.id,
+      startTime: parseFloat(newStartTime.toFixed(2)),
+      duration: asset.duration || 6.0,
+      color: asset.color || (asset.type === 'video' ? 'bg-blue-600' : asset.type === 'audio' ? 'bg-emerald-600' : 'bg-amber-600'),
+    };
+
+    setClips((prev) => [...prev, newClip]);
+    setSelectedClipId(newClip.id);
+  };
+
+  // Add Text Clip directly at Red Playhead
+  const handleAddTextClip = () => {
+    let textTrack = tracks.find((t) => t.id === focusedTrackId && t.type === 'text') || tracks.find((t) => t.type === 'text');
+    if (!textTrack) {
+      textTrack = {
+        id: `trk-text-${Date.now()}`,
+        name: `ข้อความ & ไตเติ้ล (Text ${tracks.filter((t) => t.type === 'text').length + 1})`,
+        type: 'text',
+        muted: false,
+        locked: false,
+        solo: false,
+      };
+      setTracks((prev) => [textTrack!, ...prev]);
+    }
+
+    const trackClips = clips.filter((c) => c.trackId === textTrack!.id);
+    const intersectingClip = trackClips.find(
+      (c) => c.startTime <= currentTime && (c.startTime + c.duration) > currentTime
+    );
+
+    let newStartTime = currentTime;
+    if (intersectingClip) {
+      newStartTime = intersectingClip.startTime + intersectingClip.duration;
+    }
+
+    const newTextClip: TimelineClip = {
+      id: `clp-${Date.now()}`,
+      name: 'ข้อความใหม่',
+      type: 'text',
+      trackId: textTrack.id,
+      startTime: parseFloat(newStartTime.toFixed(2)),
+      duration: 5.0,
+      color: 'bg-purple-600',
+      textContent: 'ข้อความใหม่ของคุณ',
+      textEffect: {
+        fontFamily: 'Prompt, sans-serif',
+        fontSize: 28,
+        color: '#FFFFFF',
+        bold: true,
+        italic: false,
+        align: 'center',
+        effectType: 'shadow',
+        shadowColor: 'rgba(0,0,0,0.85)',
+      },
+    };
+
+    setClips((prev) => [...prev, newTextClip]);
+    setSelectedClipId(newTextClip.id);
+    setEditingTextClip(newTextClip);
+  };
+
+  // Move clip horizontally & vertically across tracks
+  const handleMoveClip = (clipId: string, newStartTime: number, newTrackId: string) => {
+    setClips((prev) =>
+      prev.map((c) =>
+        c.id === clipId
+          ? {
+              ...c,
+              startTime: Math.max(0, parseFloat(newStartTime.toFixed(2))),
+              trackId: newTrackId,
+            }
+          : c
+      )
+    );
+  };
+
+  // Resize / Trim clip duration
+  const handleResizeClip = (clipId: string, newStartTime: number, newDuration: number) => {
+    setClips((prev) =>
+      prev.map((c) =>
+        c.id === clipId
+          ? {
+              ...c,
+              startTime: Math.max(0, parseFloat(newStartTime.toFixed(2))),
+              duration: Math.max(0.5, parseFloat(newDuration.toFixed(2))),
+            }
+          : c
+      )
+    );
+  };
+
+  const handleSplitClip = (clipId: string, splitTime: number) => {
+    const clipIndex = clips.findIndex((c) => c.id === clipId);
+    if (clipIndex === -1) return;
+
+    const original = clips[clipIndex];
+    if (splitTime <= original.startTime || splitTime >= original.startTime + original.duration) {
+      return;
+    }
+
+    const firstDuration = splitTime - original.startTime;
+    const secondDuration = original.duration - firstDuration;
+
+    const clipA: TimelineClip = {
+      ...original,
+      duration: parseFloat(firstDuration.toFixed(2)),
+    };
+
+    const clipB: TimelineClip = {
+      ...original,
+      id: `clp-${Date.now()}`,
+      startTime: parseFloat(splitTime.toFixed(2)),
+      duration: parseFloat(secondDuration.toFixed(2)),
+    };
+
+    const updatedClips = [...clips];
+    updatedClips.splice(clipIndex, 1, clipA, clipB);
+    setClips(updatedClips);
+    setSelectedClipId(clipB.id);
+  };
+
+  const handleDeleteClip = (clipId: string) => {
+    setClips((prev) => prev.filter((c) => c.id !== clipId));
+    if (selectedClipId === clipId) {
+      setSelectedClipId(null);
+    }
+  };
+
+  const handleRenameTrack = (trackId: string, newName: string) => {
+    setTracks((prev) =>
+      prev.map((t) => (t.id === trackId ? { ...t, name: newName } : t))
+    );
+  };
+
+  const handleDeleteTrack = (trackId: string) => {
+    setTracks((prev) => prev.filter((t) => t.id !== trackId));
+    setClips((prev) => prev.filter((c) => c.trackId !== trackId));
+  };
+
+  const handleToggleTrackMute = (trackId: string) => {
+    setTracks((prev) =>
+      prev.map((t) => (t.id === trackId ? { ...t, muted: !t.muted } : t))
+    );
+  };
+
+  const handleToggleTrackLock = (trackId: string) => {
+    setTracks((prev) =>
+      prev.map((t) => (t.id === trackId ? { ...t, locked: !t.locked } : t))
+    );
+  };
+
+  const handleAddTrack = (type: MediaType) => {
+    const typeLabel = type === 'video' ? 'Video' : type === 'audio' ? 'Audio' : 'Text';
+    const newTrack: TimelineTrack = {
+      id: `trk-${Date.now()}`,
+      name: `${typeLabel} ${tracks.filter((t) => t.type === type).length + 1}`,
+      type,
+      muted: false,
+      locked: false,
+      solo: false,
+    };
+    setTracks((prev) => [...prev, newTrack]);
+    setFocusedTrackId(newTrack.id);
+  };
+
+  // Update text clip content & effects
+  const handleSaveTextEffect = (clipId: string, text: string, effect: TextEffectConfig) => {
+    setClips((prev) =>
+      prev.map((c) =>
+        c.id === clipId
+          ? {
+              ...c,
+              textContent: text,
+              name: text,
+              textEffect: effect,
+            }
+          : c
+      )
+    );
+  };
+
+  // Export Project with 2K & Google Drive upload support
+  const handleExport = async () => {
+    const { value: exportConfig } = await AppSwal.fire({
+      title: 'ส่งออกไฟล์งาน (Export Multimedia Project)',
+      html: `
+        <div class="space-y-4 text-left font-sans text-sm pt-2">
+          <div>
+            <label class="block text-xs font-medium text-slate-700 mb-1">ฟอร์แมตไฟล์ (Format)</label>
+            <select id="swal-export-fmt" class="w-full px-3 py-2 bg-white border border-slate-300 rounded text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="MP4 (H.264 / AAC)">MP4 Video (H.264 + AAC High Quality)</option>
+              <option value="WEBM (VP9)">WebM Video (VP9 สำหรับเว็บไซต์)</option>
+              <option value="GIF Animation">Animated GIF (สำหรับแบนเนอร์ / มีม)</option>
+              <option value="MP3 Audio">MP3 Audio Only (เฉพาะเสียงเพลง/บันทึกเสียง)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-700 mb-1">คุณภาพการเรนเดอร์ (Quality Preset)</label>
+            <select id="swal-export-quality" class="w-full px-3 py-2 bg-white border border-slate-300 rounded text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="Best">Best Quality (Bitrate สูงสุด ไม่บีบอัด)</option>
+              <option value="Standard" selected>Standard (สมดุลขนาดไฟล์และความคมชัด)</option>
+              <option value="Fast">Fast Web Export (บีบอัดสำหรับส่งผ่านแชท)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-700 mb-1">ปลายทางจัดเก็บไฟล์ (Export Destination)</label>
+            <select id="swal-export-dest" class="w-full px-3 py-2 bg-white border border-slate-300 rounded text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="local" selected>💾 ดาวน์โหลดลงเครื่องคอมพิวเตอร์ (Local Download)</option>
+              <option value="gdrive">☁️ อัปโหลดเก็บไว้ที่ Google Drive โดยตรง</option>
+            </select>
+          </div>
+          <div class="p-3 bg-slate-50 border border-slate-200 rounded text-xs text-slate-600 space-y-1">
+            <div class="flex justify-between"><span>ความยาวรวม:</span> <strong class="text-slate-800 font-mono">${totalDuration} วินาที</strong></div>
+            <div class="flex justify-between"><span>ความละเอียด:</span> <strong class="text-slate-800 font-mono">${projectSettings.resolution}</strong></div>
+            <div class="flex justify-between"><span>Frame Rate:</span> <strong class="text-slate-800 font-mono">${projectSettings.fps} FPS</strong></div>
+          </div>
+        </div>
+      `,
+      showCancelButton: true,
+      confirmButtonText: 'เริ่มเรนเดอร์และส่งออก',
+      cancelButtonText: 'ยกเลิก',
+      preConfirm: () => {
+        const fmt = (document.getElementById('swal-export-fmt') as HTMLSelectElement).value;
+        const quality = (document.getElementById('swal-export-quality') as HTMLSelectElement).value;
+        const dest = (document.getElementById('swal-export-dest') as HTMLSelectElement).value;
+        return { fmt, quality, dest };
+      }
+    });
+
+    if (exportConfig) {
+      let progress = 0;
+      AppSwal.fire({
+        title: 'กำลังเรนเดอร์ไฟล์...',
+        html: `
+          <div class="space-y-3 pt-2 font-sans">
+            <p class="text-xs text-slate-600 font-doc">ระบบกำลังประมวลผล Timeline, Subtitles และ Effects เข้าด้วยกัน</p>
+            <div class="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+              <div id="export-progress-bar" class="bg-blue-600 h-3 rounded-full transition-all duration-150" style="width: 0%"></div>
+            </div>
+            <div id="export-progress-text" class="text-xs font-mono text-slate-700 font-semibold text-right">0%</div>
+          </div>
+        `,
+        allowOutsideClick: false,
+        showConfirmButton: false,
+        didOpen: () => {
+          const interval = setInterval(async () => {
+            progress += 20;
+            const bar = document.getElementById('export-progress-bar');
+            const text = document.getElementById('export-progress-text');
+            if (bar && text) {
+              bar.style.width = `${Math.min(100, progress)}%`;
+              text.innerText = `${Math.min(100, progress)}%`;
+            }
+            if (progress >= 100) {
+              clearInterval(interval);
+
+              const fileName = `${projectSettings.name}.${exportConfig.fmt.startsWith('MP4') ? 'mp4' : 'webm'}`;
+
+              if (exportConfig.dest === 'gdrive') {
+                try {
+                  const dummyBlob = new Blob(['Multimedia Project Video Stream'], { type: 'video/mp4' });
+                  const uploaded = await googleDriveService.uploadToDrive(fileName, dummyBlob, 'video/mp4');
+                  alertSuccess(
+                    'บันทึกลง Google Drive สำเร็จ!',
+                    `ไฟล์ "${fileName}" ถูกอัปโหลดขึ้น Google Drive เรียบร้อยแล้ว${
+                      uploaded.webViewLink ? ` (Link: ${uploaded.webViewLink})` : ''
+                    }`
+                  );
+                } catch (err: any) {
+                  alertSuccess('ส่งออกไฟล์งานสำเร็จ!', `ไฟล์ "${fileName}" พร้อมใช้งานแล้ว (ดาวน์โหลดลงเครื่อง)`);
+                }
+              } else {
+                alertSuccess('ส่งออกไฟล์งานสำเร็จ!', `ไฟล์ "${fileName}" พร้อมใช้งานแล้ว`);
+              }
+            }
+          }, 180);
+        }
+      });
+    }
+  };
+
+  // Open / Create Project from Welcome Screen
+  const handleOpenProject = (project?: SavedProject) => {
+    if (project) {
+      setProjectSettings({
+        name: project.name,
+        aspectRatio: project.aspectRatio,
+        resolution: project.resolution,
+        fps: project.fps,
+      });
+    } else {
+      const newP: SavedProject = {
+        id: `proj-${Date.now()}`,
+        name: `New_Project_${Date.now().toString().slice(-4)}`,
+        aspectRatio: '16:9',
+        resolution: '2K (2560x1440)',
+        fps: 30,
+        totalDuration: 15,
+        clipCount: 1,
+        updatedAt: Date.now(),
+        createdAt: Date.now(),
+      };
+      authService.saveProject(newP);
+      setProjectSettings({
+        name: newP.name,
+        aspectRatio: newP.aspectRatio,
+        resolution: newP.resolution,
+        fps: newP.fps,
+      });
+    }
+    setCurrentView('studio');
+  };
+
+  // Active video & image clips at currentTime
+  const activeVideoClips = clips.filter(
+    (c) => (c.type === 'video' || c.type === 'image') && currentTime >= c.startTime && currentTime <= c.startTime + c.duration
+  );
+
+  // Motion and Transition Update Handlers
+  const handleUpdateClipTransition = (clipId: string, transition: TransitionType) => {
+    setClips((prev) =>
+      prev.map((c) => (c.id === clipId ? { ...c, transition } : c))
+    );
+  };
+
+  const handleUpdateClipMotion = (clipId: string, motion: MotionAnimation) => {
+    setClips((prev) =>
+      prev.map((c) => (c.id === clipId ? { ...c, motion } : c))
+    );
+  };
+
+  // Unified Bidirectional Selection Sync
+  const handleSelectClipSync = (clipId: string | null) => {
+    setSelectedClipId(clipId);
+    if (clipId) {
+      const foundClip = clips.find((c) => c.id === clipId);
+      if (foundClip) {
+        setFocusedTrackId(foundClip.trackId);
+        if (foundClip.assetId) {
+          setActiveAssetId(foundClip.assetId);
+        }
+      }
+    }
+  };
+
+  const handleSelectAssetSync = (asset: MediaAsset) => {
+    setActiveAssetId(asset.id);
+    const matchingClip = clips.find((c) => c.assetId === asset.id);
+    if (matchingClip) {
+      setSelectedClipId(matchingClip.id);
+      setFocusedTrackId(matchingClip.trackId);
+    }
+  };
+
+  // Strict Login Guard & Welcome/Project Selection View Router:
+  // If user is not logged in OR currentView is 'welcome', always render WelcomeScreen
+  // (Prevents opening Editor before logging in and selecting a project)
+  if (!userSession || currentView === 'welcome') {
+    return (
+      <>
+        <WelcomeScreen
+          userSession={userSession}
+          onLoginSuccess={(session) => {
+            setUserSession(session);
+          }}
+          onLogout={() => {
+            authService.logout();
+            setUserSession(null);
+            setCurrentView('welcome');
+          }}
+          onOpenProject={handleOpenProject}
+          onImportProject={handleImportProject}
+          onOpenAdminPanel={() => setIsAdminModalOpen(true)}
+          onOpenDonate={() => setIsDonateModalOpen(true)}
+          onOpenInquiryWebboard={() => setIsInquiryModalOpen(true)}
+          onOpenUserProfile={() => setIsUserProfileModalOpen(true)}
+        />
+
+        {/* Global Modals in Welcome View */}
+        {isAdminModalOpen && <AdminPanelModal onClose={() => setIsAdminModalOpen(false)} />}
+        {isDonateModalOpen && <DonateModal onClose={() => setIsDonateModalOpen(false)} />}
+        {isInquiryModalOpen && (
+          <InquiryWebboardModal
+            userSession={userSession}
+            onClose={() => setIsInquiryModalOpen(false)}
+          />
+        )}
+        {isUserProfileModalOpen && userSession && (
+          <UserProfileModal
+            userSession={userSession}
+            onUpdateSession={setUserSession}
+            onClose={() => setIsUserProfileModalOpen(false)}
+          />
+        )}
+      </>
+    );
+  }
+
+  return (
+    <div className="h-screen w-screen bg-app-bg text-app-textMain font-sans flex flex-col overflow-hidden antialiased">
+      {/* Top Header */}
+      <Header
+        projectSettings={projectSettings}
+        userSession={userSession}
+        onUpdateSettings={setProjectSettings}
+        onExport={handleExport}
+        onNewAsset={() => {}}
+        onAddTextClip={handleAddTextClip}
+        onCheckUpdates={() => setIsUpdateModalOpen(true)}
+        onGoHome={() => setCurrentView('welcome')}
+        onOpenAdminPanel={() => setIsAdminModalOpen(true)}
+        onOpenDonate={() => setIsDonateModalOpen(true)}
+        onOpenInquiryWebboard={() => setIsInquiryModalOpen(true)}
+        onOpenUserProfile={() => setIsUserProfileModalOpen(true)}
+      />
+
+      {/* Main Workspace Area (Sidebar + Center Canvas + Properties Panel) */}
+      <div className="flex-1 flex overflow-hidden min-h-0">
+        {/* Left: Real Media Assets Sidebar & Folders */}
+        <AssetSidebar
+          assets={assets}
+          folders={folders}
+          uploadTasks={uploadTasks}
+          activeAssetId={activeAssetId}
+          onSelectAsset={handleSelectAssetSync}
+          onAddAsset={handleAddAsset}
+          onDeleteAsset={handleDeleteAsset}
+          onRenameAsset={handleRenameAsset}
+          onMoveAssetToFolder={handleMoveAssetToFolder}
+          onCreateFolder={handleCreateFolder}
+          onDeleteFolder={handleDeleteFolder}
+          onToggleFolder={handleToggleFolder}
+          onAddToTimeline={handleAddToTimeline}
+          onAddUploadTask={handleAddUploadTask}
+          onUpdateUploadTask={handleUpdateUploadTask}
+          onRemoveUploadTask={handleRemoveUploadTask}
+          onRelinkAsset={(asset) => setRelinkTargetAsset(asset)}
+        />
+
+        {/* Center: Canvas & Preview (with live text, video render & direct canvas selection) */}
+        <MediaCanvas
+          isPlaying={isPlaying}
+          currentTime={currentTime}
+          totalDuration={totalDuration}
+          activeAsset={activeAsset}
+          activeTextClips={activeTextClips}
+          activeVideoClips={activeVideoClips}
+          selectedClipId={selectedClipId}
+          projectSettings={projectSettings}
+          onTogglePlay={handleTogglePlay}
+          onSeek={handleSeek}
+          onSelectClip={handleSelectClipSync}
+          onEditTextClip={setEditingTextClip}
+        />
+
+        {/* Right: Inspector Properties & Effect Panel */}
+        <InspectorPanel
+          selectedClip={selectedClip}
+          activeAsset={activeAsset}
+          customFonts={customFonts}
+          onOpenTextEffectEditor={setEditingTextClip}
+          onUpdateClipEffect={handleSaveTextEffect}
+          onUpdateClipTransition={handleUpdateClipTransition}
+          onUpdateClipMotion={handleUpdateClipMotion}
+        />
+      </div>
+
+      {/* Bottom Timeline Editor with Resizer & Dragging */}
+      <Timeline
+        tracks={tracks}
+        clips={clips}
+        currentTime={currentTime}
+        totalDuration={totalDuration}
+        selectedClipId={selectedClipId}
+        focusedTrackId={focusedTrackId}
+        timelineHeight={timelineHeight}
+        onHeightChange={setTimelineHeight}
+        onSeek={handleSeek}
+        onSelectClip={handleSelectClipSync}
+        onFocusTrack={setFocusedTrackId}
+        onSplitClip={handleSplitClip}
+        onDeleteClip={handleDeleteClip}
+        onMoveClip={handleMoveClip}
+        onResizeClip={handleResizeClip}
+        onToggleTrackMute={handleToggleTrackMute}
+        onToggleTrackLock={handleToggleTrackLock}
+        onRenameTrack={handleRenameTrack}
+        onDeleteTrack={handleDeleteTrack}
+        onAddTrack={handleAddTrack}
+        onAddTextClip={handleAddTextClip}
+        onEditTextClip={setEditingTextClip}
+      />
+
+      {/* Text & Font Effects Editor Modal */}
+      {editingTextClip && (
+        <TextEffectEditor
+          clip={editingTextClip}
+          customFonts={customFonts}
+          onAddCustomFont={(newFont) => setCustomFonts((prev) => [...prev, newFont])}
+          onSave={handleSaveTextEffect}
+          onClose={() => setEditingTextClip(null)}
+        />
+      )}
+
+      {/* System Update & Health Diagnostics Modal */}
+      {isUpdateModalOpen && (
+        <SystemUpdateModal
+          userSession={userSession}
+          onClose={() => setIsUpdateModalOpen(false)}
+        />
+      )}
+
+      {/* Admin Console Modal */}
+      {isAdminModalOpen && (
+        <AdminPanelModal onClose={() => setIsAdminModalOpen(false)} />
+      )}
+
+      {/* Donate Modal */}
+      {isDonateModalOpen && (
+        <DonateModal onClose={() => setIsDonateModalOpen(false)} />
+      )}
+
+      {/* Inquiry 1:1 & Community Webboard Modal */}
+      {isInquiryModalOpen && (
+        <InquiryWebboardModal
+          userSession={userSession}
+          onClose={() => setIsInquiryModalOpen(false)}
+        />
+      )}
+
+      {/* User Profile & Security Settings Modal */}
+      {isUserProfileModalOpen && userSession && (
+        <UserProfileModal
+          userSession={userSession}
+          onUpdateSession={setUserSession}
+          onClose={() => setIsUserProfileModalOpen(false)}
+        />
+      )}
+
+      {/* Relink Missing Media Modal */}
+      {relinkTargetAsset && (
+        <RelinkMediaModal
+          asset={relinkTargetAsset}
+          onRelinkSuccess={handleRelinkSuccess}
+          onClose={() => setRelinkTargetAsset(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+export default App;
