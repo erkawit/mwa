@@ -924,21 +924,58 @@ export const AssetSidebar: React.FC<AssetSidebarProps> = ({
               </div>
             </div>
 
-            {/* Animation Speed Slider */}
-            <div className="space-y-1 pt-2 border-t border-slate-200">
-              <div className="flex justify-between text-xs text-slate-700 font-semibold">
-                <span>ความเร็วแอนิเมชัน (Duration):</span>
-                <span className="font-mono text-amber-600">{currentMotion.duration || 0.6}s</span>
+            {/* Time-Based In / Out Animation Timing Settings */}
+            <div className="space-y-3 pt-2 border-t border-slate-200">
+              <div className="p-2 bg-slate-50 border border-slate-200 rounded text-[11px] space-y-1">
+                <div className="font-semibold text-slate-700 flex items-center gap-1">
+                  <span>⏱️ การกำหนดช่วงเวลาทำงาน (Animation Timing)</span>
+                </div>
+                <div className="text-[10px] text-slate-500 leading-relaxed font-doc">
+                  {selectedClip?.type === 'video' || selectedClip?.type === 'audio' ? (
+                    <span className="text-blue-700 font-medium">
+                      🎬 สำหรับไฟล์วิดีโอ/เสียง: แอนิเมชั่นจะทำงานช่วงต้นและช่วงท้าย โดยอิงตามระยะเวลาจริงของไฟล์
+                    </span>
+                  ) : (
+                    <span className="text-purple-700 font-medium">
+                      ✍️ สำหรับไฟล์ภาพ/ข้อความ: แอนิเมชั่นจะทำงานช่วงต้นและช่วงท้าย โดยอิงตามความยาวของคลิปบนไทม์ไลน์ ({selectedClip?.duration || 5.0}s)
+                    </span>
+                  )}
+                </div>
               </div>
-              <input
-                type="range"
-                min="0.2"
-                max="2.0"
-                step="0.1"
-                value={currentMotion.duration || 0.6}
-                onChange={(e) => handleSelectMotion('duration', Number(e.target.value))}
-                className="w-full h-1.5 bg-slate-200 rounded appearance-none cursor-pointer accent-amber-500"
-              />
+
+              {/* In-Animation Duration Slider */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs text-slate-700 font-semibold">
+                  <span className="text-emerald-700">⏱️ ช่วงเวลาเปิดตัว (In Duration):</span>
+                  <span className="font-mono text-emerald-600 font-bold">{currentMotion.inDuration ?? currentMotion.duration ?? 0.8}s</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.2"
+                  max="2.5"
+                  step="0.1"
+                  value={currentMotion.inDuration ?? currentMotion.duration ?? 0.8}
+                  onChange={(e) => handleSelectMotion('inDuration', Number(e.target.value))}
+                  className="w-full h-1.5 bg-slate-200 rounded appearance-none cursor-pointer accent-emerald-500"
+                />
+              </div>
+
+              {/* Out-Animation Duration Slider */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs text-slate-700 font-semibold">
+                  <span className="text-rose-700">⏱️ ช่วงเวลาปิดท้าย (Out Duration):</span>
+                  <span className="font-mono text-rose-600 font-bold">{currentMotion.outDuration ?? currentMotion.duration ?? 0.8}s</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.2"
+                  max="2.5"
+                  step="0.1"
+                  value={currentMotion.outDuration ?? currentMotion.duration ?? 0.8}
+                  onChange={(e) => handleSelectMotion('outDuration', Number(e.target.value))}
+                  className="w-full h-1.5 bg-slate-200 rounded appearance-none cursor-pointer accent-rose-500"
+                />
+              </div>
             </div>
           </div>
         )}

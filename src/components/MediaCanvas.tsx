@@ -12,7 +12,7 @@ import {
   Minimize2, 
   ZoomIn
 } from 'lucide-react';
-import type { MediaAsset, ProjectSettings, TimelineClip, MotionAnimation, TransitionType } from '../types';
+import type { MediaAsset, ProjectSettings, TimelineClip } from '../types';
 import { getTextEffectStyles } from '../utils/fontManager';
 
 interface MediaCanvasProps {
@@ -118,51 +118,101 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
     }
   };
 
-  // Helper to generate CSS animation class based on motion & transition
-  const getMotionAnimationClasses = (motion?: MotionAnimation, transition?: TransitionType) => {
+  // Time-Based Animation Evaluator (Checks In/Out phases based on clip duration & playback time)
+  const getClipTimeBasedAnimation = (
+    clip?: TimelineClip,
+    time: number = currentTime
+  ): {
+    className: string;
+    style?: React.CSSProperties;
+    phase: 'in' | 'out' | 'loop' | 'idle';
+  } => {
+    if (!clip) return { className: '', phase: 'idle' };
+    const motion = clip.motion;
+    const transition = clip.transition;
+    if (!motion && (!transition || transition === 'none')) {
+      return { className: '', phase: 'idle' };
+    }
+
+    const clipStart = clip.startTime;
+    const clipDuration = Math.max(0.2, clip.duration);
+    const timeWithin = Math.max(0, Math.min(clipDuration, time - clipStart));
+
+    // Calculate In & Out durations (proportional scale down if clip is short)
+    const rawInDur = motion?.inDuration ?? motion?.duration ?? 0.8;
+    const rawOutDur = motion?.outDuration ?? motion?.duration ?? 0.8;
+    const inDur = Math.min(rawInDur, Math.max(0.1, clipDuration * 0.45));
+    const outDur = Math.min(rawOutDur, Math.max(0.1, clipDuration * 0.45));
+
     const classes: string[] = [];
 
-    // Transition styles
-    if (transition === 'fade-in') classes.push('motion-fade-in');
-    else if (transition === 'fade-out') classes.push('motion-fade-out');
-    else if (transition === 'cross-dissolve' || transition === 'fade-black') classes.push('transition-opacity duration-500');
-    else if (transition === 'blur') classes.push('filter blur-0 transition-all');
-    else if (transition === 'zoom-in') classes.push('transition-transform duration-500 transform');
-    else if (transition === 'slide-left') classes.push('motion-slide-left');
-    else if (transition === 'slide-right') classes.push('motion-slide-right');
+    // Phase 1: In-Animation (ช่วงต้นของเวลา / Opening Phase)
+    if (timeWithin <= inDur) {
+      const inType = motion?.inAnimation;
+      if (inType && inType !== 'none') {
+        if (inType === 'fade-in') classes.push('motion-fade-in');
+        else if (inType === 'slide-up') classes.push('motion-slide-up');
+        else if (inType === 'slide-down') classes.push('motion-slide-down');
+        else if (inType === 'slide-left') classes.push('motion-slide-left');
+        else if (inType === 'slide-right') classes.push('motion-slide-right');
+        else if (inType === 'pop-in') classes.push('motion-pop-in');
+        else if (inType === 'bounce-in') classes.push('animate-bounce');
+        else if (inType === 'flip-in') classes.push('motion-flip-in');
+        else if (inType === 'spin-in') classes.push('motion-spin-in');
+        else if (inType === 'typewriter') classes.push('motion-slide-up');
+      } else if (transition === 'fade-in' || transition === 'cross-dissolve') {
+        classes.push('motion-fade-in');
+      } else if (transition === 'slide-left') {
+        classes.push('motion-slide-left');
+      } else if (transition === 'slide-right') {
+        classes.push('motion-slide-right');
+      }
 
-    // In Animation
-    if (motion?.inAnimation === 'fade-in') classes.push('motion-fade-in');
-    else if (motion?.inAnimation === 'slide-up') classes.push('motion-slide-up');
-    else if (motion?.inAnimation === 'slide-down') classes.push('motion-slide-down');
-    else if (motion?.inAnimation === 'slide-left') classes.push('motion-slide-left');
-    else if (motion?.inAnimation === 'slide-right') classes.push('motion-slide-right');
-    else if (motion?.inAnimation === 'pop-in') classes.push('motion-pop-in');
-    else if (motion?.inAnimation === 'bounce-in') classes.push('animate-bounce');
-    else if (motion?.inAnimation === 'flip-in') classes.push('motion-flip-in');
-    else if (motion?.inAnimation === 'spin-in') classes.push('motion-spin-in');
+      return {
+        className: classes.join(' '),
+        style: { animationDuration: `${inDur}s` },
+        phase: 'in',
+      };
+    }
 
-    // Out Animation
-    if (motion?.outAnimation === 'fade-out') classes.push('motion-fade-out');
-    else if (motion?.outAnimation === 'slide-down') classes.push('motion-slide-down');
-    else if (motion?.outAnimation === 'slide-up') classes.push('motion-slide-up');
-    else if (motion?.outAnimation === 'slide-left') classes.push('motion-slide-left');
-    else if (motion?.outAnimation === 'slide-right') classes.push('motion-slide-right');
-    else if (motion?.outAnimation === 'scale-out') classes.push('motion-scale-out');
-    else if (motion?.outAnimation === 'blur-out') classes.push('motion-blur-out');
-    else if (motion?.outAnimation === 'fade-black') classes.push('motion-fade-out');
+    // Phase 2: Out-Animation (ช่วงท้ายของเวลา / Closing Phase)
+    if (timeWithin >= (clipDuration - outDur)) {
+      const outType = motion?.outAnimation;
+      if (outType && outType !== 'none') {
+        if (outType === 'fade-out' || outType === 'fade-black') classes.push('motion-fade-out');
+        else if (outType === 'slide-down') classes.push('motion-slide-down');
+        else if (outType === 'slide-up') classes.push('motion-slide-up');
+        else if (outType === 'slide-left') classes.push('motion-slide-left');
+        else if (outType === 'slide-right') classes.push('motion-slide-right');
+        else if (outType === 'scale-out') classes.push('motion-scale-out');
+        else if (outType === 'blur-out') classes.push('motion-blur-out');
+      } else if (transition === 'fade-out' || transition === 'fade-black') {
+        classes.push('motion-fade-out');
+      }
 
-    // Loop Animation
-    if (motion?.loopAnimation === 'pulse') classes.push('animate-pulse');
-    else if (motion?.loopAnimation === 'floating') classes.push('motion-floating');
-    else if (motion?.loopAnimation === 'shake') classes.push('motion-shake');
-    else if (motion?.loopAnimation === 'glow-wave') classes.push('motion-glow-wave');
+      return {
+        className: classes.join(' '),
+        style: { animationDuration: `${outDur}s` },
+        phase: 'out',
+      };
+    }
 
-    return classes.join(' ');
+    // Phase 3: Main Steady State / Loop Animation (ช่วงกลาง)
+    const loopType = motion?.loopAnimation;
+    if (loopType && loopType !== 'none') {
+      if (loopType === 'pulse') classes.push('animate-pulse');
+      else if (loopType === 'floating') classes.push('motion-floating');
+      else if (loopType === 'shake') classes.push('motion-shake');
+      else if (loopType === 'glow-wave') classes.push('motion-glow-wave');
+      return { className: classes.join(' '), phase: 'loop' };
+    }
+
+    return { className: '', phase: 'idle' };
   };
 
   const activePrimaryVideoClip = activeVideoClips[0];
   const isVideoSelected = activePrimaryVideoClip && selectedClipId === activePrimaryVideoClip.id;
+  const primaryVideoAnim = getClipTimeBasedAnimation(activePrimaryVideoClip, currentTime);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-slate-100/70 p-4 select-none">
@@ -222,20 +272,22 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
             {/* Grid overlay */}
             <div className="absolute inset-0 opacity-10 bg-[linear-gradient(to_right,#808080_1px,transparent_1px),linear-gradient(to_bottom,#808080_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none"></div>
 
-            {/* Video playback with real-time motion and transitions (Requirement 2) */}
+            {/* Video playback with real-time time-based in/out motion & transitions */}
             {activeAsset?.type === 'video' && activeAsset.blobUrl ? (
               <video
                 ref={videoRef}
                 src={activeAsset.blobUrl}
                 muted={isMuted}
-                className={`w-full h-full object-contain ${getMotionAnimationClasses(activePrimaryVideoClip?.motion, activePrimaryVideoClip?.transition)}`}
+                style={primaryVideoAnim.style}
+                className={`w-full h-full object-contain ${primaryVideoAnim.className}`}
                 playsInline
               />
             ) : activeAsset?.type === 'image' && activeAsset.blobUrl ? (
               <img
                 src={activeAsset.blobUrl}
                 alt={activeAsset.name}
-                className={`w-full h-full object-contain ${getMotionAnimationClasses(activePrimaryVideoClip?.motion, activePrimaryVideoClip?.transition)}`}
+                style={primaryVideoAnim.style}
+                className={`w-full h-full object-contain ${primaryVideoAnim.className}`}
               />
             ) : activeAsset ? (
               <div className="text-center p-6 z-10 space-y-3">
@@ -254,21 +306,21 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
               </div>
             )}
 
-            {/* Active Selection Badge on Canvas (Requirement 3) */}
+            {/* Active Selection Badge on Canvas */}
             {isVideoSelected && (
               <div className="absolute top-2 left-2 px-2 py-0.5 bg-blue-600 text-white text-[10px] font-sans font-medium rounded shadow flex items-center gap-1 z-30 pointer-events-none animate-in fade-in">
-                <span>เลือกวิดีโออยู่</span>
+                <span>เลือกวิดีโออยู่ {primaryVideoAnim.phase !== 'idle' ? `(${primaryVideoAnim.phase.toUpperCase()})` : ''}</span>
               </div>
             )}
 
-            {/* Render Active Text Clips on Top with Motion Animation & Direct Selection (Requirement 2 & 3) */}
+            {/* Render Active Text Clips on Top with Time-Based In/Out Motion Animation */}
             {activeTextClips.map((clip) => {
               const effectStyle = clip.textEffect 
                 ? getTextEffectStyles(clip.textEffect) 
                 : { color: '#FFF', fontSize: '28px', fontWeight: 'bold' };
 
               const isTextSelected = selectedClipId === clip.id;
-              const motionClasses = getMotionAnimationClasses(clip.motion, clip.transition);
+              const textAnim = getClipTimeBasedAnimation(clip, currentTime);
 
               return (
                 <div 
@@ -287,8 +339,8 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
                   }`}
                 >
                   <span 
-                    style={effectStyle}
-                    className={`inline-block relative transition transform group-hover/text:scale-105 ${motionClasses}`}
+                    style={{ ...effectStyle, ...textAnim.style }}
+                    className={`inline-block relative transition transform group-hover/text:scale-105 ${textAnim.className}`}
                   >
                     {clip.textContent || clip.name}
                     

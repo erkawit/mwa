@@ -17,7 +17,9 @@ export interface MotionAnimation {
   inAnimation?: 'none' | 'fade-in' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'pop-in' | 'bounce-in' | 'flip-in' | 'typewriter' | 'spin-in';
   outAnimation?: 'none' | 'fade-out' | 'slide-down' | 'slide-up' | 'slide-left' | 'slide-right' | 'scale-out' | 'blur-out' | 'fade-black';
   loopAnimation?: 'none' | 'pulse' | 'floating' | 'shake' | 'glow-wave';
-  duration?: number; // in seconds, default 0.6s
+  duration?: number; // in seconds, default 0.8s
+  inDuration?: number; // ช่วงเวลาเปิดตัว (Opening Phase Duration in seconds, default 0.8s)
+  outDuration?: number; // ช่วงเวลาปิดท้าย (Closing Phase Duration in seconds, default 0.8s)
 }
 
 export type UserRole = 'admin' | 'editor';

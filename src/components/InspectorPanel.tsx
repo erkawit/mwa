@@ -299,21 +299,48 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 </div>
               </div>
 
-              {/* Animation Speed Slider */}
-              <div className="space-y-1 pt-1">
-                <div className="flex justify-between text-[11px] text-slate-600">
-                  <span>ความเร็วแอนิเมชัน (Duration)</span>
-                  <span className="font-mono text-slate-800">{currentMotion.duration || 0.6}s</span>
+              {/* Animation Timing Controls & Guidelines */}
+              <div className="space-y-2 pt-2 border-t border-slate-200">
+                <div className="p-2 bg-slate-50 border border-slate-200 rounded text-[10px] space-y-0.5 font-doc">
+                  <div className="font-semibold text-slate-700">⏱️ การกำหนดช่วงเวลาทำงาน:</div>
+                  <div className="text-slate-500">
+                    {selectedClip.type === 'video' || selectedClip.type === 'audio' 
+                      ? '🎬 อิงตามระยะเวลาจริงของไฟล์วิดีโอ/เสียง' 
+                      : `✍️ อิงตามความยาวคลิปบนไทม์ไลน์ (${selectedClip.duration}s)`}
+                  </div>
                 </div>
-                <input
-                  type="range"
-                  min="0.2"
-                  max="2.0"
-                  step="0.1"
-                  value={currentMotion.duration || 0.6}
-                  onChange={(e) => handleSelectMotion('duration', Number(e.target.value))}
-                  className="w-full h-1.5 bg-slate-200 rounded appearance-none cursor-pointer accent-amber-500"
-                />
+
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[11px] text-slate-600">
+                    <span className="text-emerald-700 font-semibold">ช่วงเปิดตัว (In Duration)</span>
+                    <span className="font-mono text-emerald-600 font-bold">{currentMotion.inDuration ?? currentMotion.duration ?? 0.8}s</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.2"
+                    max="2.5"
+                    step="0.1"
+                    value={currentMotion.inDuration ?? currentMotion.duration ?? 0.8}
+                    onChange={(e) => handleSelectMotion('inDuration', Number(e.target.value))}
+                    className="w-full h-1.5 bg-slate-200 rounded appearance-none cursor-pointer accent-emerald-600"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[11px] text-slate-600">
+                    <span className="text-rose-700 font-semibold">ช่วงปิดท้าย (Out Duration)</span>
+                    <span className="font-mono text-rose-600 font-bold">{currentMotion.outDuration ?? currentMotion.duration ?? 0.8}s</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.2"
+                    max="2.5"
+                    step="0.1"
+                    value={currentMotion.outDuration ?? currentMotion.duration ?? 0.8}
+                    onChange={(e) => handleSelectMotion('outDuration', Number(e.target.value))}
+                    className="w-full h-1.5 bg-slate-200 rounded appearance-none cursor-pointer accent-rose-600"
+                  />
+                </div>
               </div>
             </div>
 

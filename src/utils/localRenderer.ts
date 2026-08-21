@@ -187,6 +187,61 @@ export async function renderProjectOnClient(options: RenderExportOptions): Promi
 
     for (const textClip of activeTextClips) {
       ctx.save();
+      const clipStart = textClip.startTime;
+      const clipDuration = Math.max(0.2, textClip.duration);
+      const timeWithin = Math.max(0, Math.min(clipDuration, currentTime - clipStart));
+      const inDur = Math.min(textClip.motion?.inDuration ?? textClip.motion?.duration ?? 0.8, clipDuration * 0.45);
+      const outDur = Math.min(textClip.motion?.outDuration ?? textClip.motion?.duration ?? 0.8, clipDuration * 0.45);
+
+      let alpha = 1.0;
+      let offsetY = 0;
+      let offsetX = 0;
+
+      // In Animation Phase (ช่วงต้น)
+      if (timeWithin <= inDur) {
+        const inProgress = Math.max(0, Math.min(1, timeWithin / inDur));
+        const inType = textClip.motion?.inAnimation || textClip.transition;
+        if (inType === 'fade-in' || inType === 'cross-dissolve') {
+          alpha = inProgress;
+        } else if (inType === 'slide-up') {
+          alpha = inProgress;
+          offsetY = (1 - inProgress) * 35;
+        } else if (inType === 'slide-down') {
+          alpha = inProgress;
+          offsetY = -(1 - inProgress) * 35;
+        } else if (inType === 'slide-left') {
+          alpha = inProgress;
+          offsetX = (1 - inProgress) * 45;
+        } else if (inType === 'slide-right') {
+          alpha = inProgress;
+          offsetX = -(1 - inProgress) * 45;
+        } else if (inType === 'pop-in' || inType === 'bounce-in') {
+          alpha = inProgress;
+        }
+      } 
+      // Out Animation Phase (ช่วงท้าย)
+      else if (timeWithin >= (clipDuration - outDur)) {
+        const outProgress = Math.max(0, Math.min(1, (clipDuration - timeWithin) / outDur));
+        const outType = textClip.motion?.outAnimation || textClip.transition;
+        if (outType === 'fade-out' || outType === 'fade-black') {
+          alpha = outProgress;
+        } else if (outType === 'slide-down') {
+          alpha = outProgress;
+          offsetY = (1 - outProgress) * 35;
+        } else if (outType === 'slide-up') {
+          alpha = outProgress;
+          offsetY = -(1 - outProgress) * 35;
+        } else if (outType === 'slide-left') {
+          alpha = outProgress;
+          offsetX = -(1 - outProgress) * 45;
+        } else if (outType === 'slide-right') {
+          alpha = outProgress;
+          offsetX = (1 - outProgress) * 45;
+        }
+      }
+
+      ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+
       const fontSize = textClip.textEffect?.fontSize ? Math.round(textClip.textEffect.fontSize * (width / 1280)) : Math.round(width * 0.035);
       const fontFamily = textClip.textEffect?.fontFamily || 'Prompt, sans-serif';
       const textColor = textClip.textEffect?.color || '#FFFFFF';
@@ -195,8 +250,8 @@ export async function renderProjectOnClient(options: RenderExportOptions): Promi
       ctx.textAlign = (textClip.textEffect?.align as CanvasTextAlign) || 'center';
       ctx.textBaseline = 'middle';
 
-      const posX = width / 2;
-      const posY = height * 0.78;
+      const posX = width / 2 + offsetX;
+      const posY = height * 0.78 + offsetY;
       const content = textClip.textContent || textClip.name;
 
       // Neon / Shadow Effect
