@@ -90,13 +90,49 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
-  // Set volume and muted state on video element
+  // Audio Context & Gain Node for up to 4x (400%) live audio amplification
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
+  const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
+
+  // Set volume and boosted gain state on video element (up to 4x / 400%)
   useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.volume = isMuted ? 0 : volume / 100;
-      videoRef.current.muted = isMuted;
+    const video = videoRef.current;
+    if (!video) return;
+
+    const clipVolBoost = (activePrimaryVideoClip?.audioSettings?.volume ?? 100) / 100; // e.g. 0.0 to 4.0
+    const masterVol = isMuted ? 0 : volume / 100; // 0.0 to 1.0
+    const totalGain = clipVolBoost * masterVol;
+
+    try {
+      if (!audioCtxRef.current && totalGain > 1.0) {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioContextClass) {
+          const ctx = new AudioContextClass();
+          const gainNode = ctx.createGain();
+          const source = ctx.createMediaElementSource(video);
+          source.connect(gainNode);
+          gainNode.connect(ctx.destination);
+
+          audioCtxRef.current = ctx;
+          gainNodeRef.current = gainNode;
+          sourceNodeRef.current = source;
+        }
+      }
+
+      if (gainNodeRef.current) {
+        gainNodeRef.current.gain.value = totalGain;
+        video.volume = 1.0;
+        video.muted = isMuted;
+      } else {
+        video.volume = Math.min(1.0, totalGain);
+        video.muted = isMuted;
+      }
+    } catch {
+      video.volume = Math.min(1.0, totalGain);
+      video.muted = isMuted;
     }
-  }, [volume, isMuted]);
+  }, [volume, isMuted, activePrimaryVideoClip?.audioSettings?.volume]);
 
   // Sync real video element playback state
   useEffect(() => {
@@ -705,9 +741,33 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
 
               {/* Selection Bounding Box with 8 Symmetrical Transform Handles */}
               {isVideoSelected && activePrimaryVideoClip && (
-                <div 
-                  onMouseDown={(e) => handleTransformStart(e, activePrimaryVideoClip, 'move')}
-                  title="คลิกค้างเพื่อเลื่อนตำแหน่งสื่อ • ลากหมากทั้ง 8 จุดเพื่อยืดขยายแบบสมมาตร"
+                <>
+                  {/* Central Play/Pause button: Render ONLY on selected Video media item */}
+                  {currentMediaAsset?.type === 'video' && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
+                      {isPlaying ? (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); onTogglePlay(); }}
+                          title="หยุดชั่วคราว (Pause - Space)"
+                          className="pointer-events-auto w-12 h-12 bg-black/60 hover:bg-black/85 backdrop-blur-xs text-white rounded-full flex items-center justify-center transition-all opacity-0 group-hover/canvas:opacity-90 hover:opacity-100 border border-white/30 transform hover:scale-110 shadow-2xl"
+                        >
+                          <Pause className="w-5 h-5 fill-white" />
+                        </button>
+                      ) : (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); onTogglePlay(); }}
+                          title="เล่นวิดีโอ (Play - Space)"
+                          className="pointer-events-auto w-12 h-12 bg-black/60 hover:bg-black/85 backdrop-blur-xs text-white rounded-full flex items-center justify-center transition-all opacity-90 hover:opacity-100 border border-white/30 transform hover:scale-110 shadow-2xl"
+                        >
+                          <Play className="w-5 h-5 ml-0.5 fill-white" />
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  <div 
+                    onMouseDown={(e) => handleTransformStart(e, activePrimaryVideoClip, 'move')}
+                    title="คลิกค้างเพื่อเลื่อนตำแหน่งสื่อ • ลากหมากทั้ง 8 จุดเพื่อยืดขยายแบบสมมาตร"
                   className="absolute inset-0 border-2 border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.6)] pointer-events-auto cursor-move z-30 group/box"
                 >
                   {/* Top-Left Corner Handle (NW) */}
@@ -781,7 +841,8 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
                     </button>
                   </div>
                 </div>
-              )}
+              </>
+            )}
             </div>
 
             {/* Active Selection Badge on Canvas */}
@@ -937,27 +998,6 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
                   </div>
                 );
               })}
-
-            {/* Central Play/Pause Watermark with Mouse Hover Fade-in Detection */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-              {isPlaying ? (
-                <button 
-                  onClick={(e) => { e.stopPropagation(); onTogglePlay(); }}
-                  title="หยุดชั่วคราว (Pause - Space)"
-                  className="pointer-events-auto w-14 h-14 bg-black/50 hover:bg-black/80 backdrop-blur-xs text-white rounded-full flex items-center justify-center transition-all opacity-0 group-hover/canvas:opacity-90 hover:opacity-100 border border-white/30 transform hover:scale-110 shadow-2xl"
-                >
-                  <Pause className="w-6 h-6 fill-white" />
-                </button>
-              ) : (
-                <button 
-                  onClick={(e) => { e.stopPropagation(); onTogglePlay(); }}
-                  title="เล่น (Play - Space)"
-                  className="pointer-events-auto w-14 h-14 bg-black/50 hover:bg-black/80 backdrop-blur-xs text-white rounded-full flex items-center justify-center transition-all opacity-90 hover:opacity-100 border border-white/30 transform hover:scale-110 shadow-2xl"
-                >
-                  <Play className="w-6 h-6 ml-1 fill-white" />
-                </button>
-              )}
-            </div>
           </div>
 
           {/* Timecode Badge on Canvas */}

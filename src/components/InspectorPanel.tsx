@@ -44,19 +44,9 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
   onUpdateClipEffect,
   onUpdateClipTransition = () => {},
   onUpdateClipMotion = () => {},
+  onUpdateClipAudio = () => {},
+  onUpdateClipVideo: _onUpdateClipVideo = () => {},
 }) => {
-  // Audio state
-  const [audioSettings, setAudioSettings] = React.useState<AudioSettings>(
-    selectedClip?.audioSettings || {
-      volume: 100,
-      pan: 0,
-      equalizer: 'flat',
-      sampleRate: '48.0 kHz',
-      bitrate: '320 kbps',
-      fadeInDuration: 0,
-      fadeOutDuration: 0,
-    }
-  );
 
   // Video state
   const [videoSettings, setVideoSettings] = React.useState<VideoSettings>(
@@ -449,28 +439,93 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               </div>
             )}
 
-            {/* Audio Settings */}
-            <div className="space-y-3 pt-2 border-t border-slate-200">
-              <div className="flex items-center gap-1.5 font-semibold text-slate-800 uppercase tracking-wider text-[10px]">
-                <Volume2 className="w-3.5 h-3.5 text-emerald-600" />
-                <span>ระดับเสียง & Audio Bitrate</span>
-              </div>
-
-              <div className="space-y-1">
-                <div className="flex justify-between text-slate-600">
-                  <span>ระดับความดัง (Volume)</span>
-                  <span className="font-mono text-slate-800">{audioSettings.volume}%</span>
+            {/* Audio Settings (Video & Audio Clips) */}
+            {(selectedClip.type === 'video' || selectedClip.type === 'audio') && (
+              <div className="space-y-3 pt-2 border-t border-slate-200">
+                <div className="flex items-center justify-between font-semibold text-slate-800 uppercase tracking-wider text-[10px]">
+                  <div className="flex items-center gap-1.5">
+                    <Volume2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>ระดับเสียง (Volume Boost สูงสุด 4 เท่า)</span>
+                  </div>
+                  <span className={`font-mono text-[11px] font-bold ${
+                    (selectedClip.audioSettings?.volume ?? 100) > 100 ? 'text-amber-600' : 'text-slate-800'
+                  }`}>
+                    {selectedClip.audioSettings?.volume ?? 100}%
+                    {(selectedClip.audioSettings?.volume ?? 100) > 100 ? ` (${((selectedClip.audioSettings?.volume ?? 100) / 100).toFixed(1)}x)` : ''}
+                  </span>
                 </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="150"
-                  value={audioSettings.volume}
-                  onChange={(e) => setAudioSettings(prev => ({ ...prev, volume: Number(e.target.value) }))}
-                  className="w-full h-1.5 bg-slate-200 rounded appearance-none cursor-pointer accent-emerald-600"
-                />
+
+                {/* Volume Slider 0% to 400% */}
+                <div className="space-y-1.5">
+                  <input
+                    type="range"
+                    min="0"
+                    max="400"
+                    step="5"
+                    value={selectedClip.audioSettings?.volume ?? 100}
+                    onChange={(e) => {
+                      const newVol = Number(e.target.value);
+                      const currentAudio = selectedClip.audioSettings || {
+                        volume: 100,
+                        pan: 0,
+                        equalizer: 'flat',
+                        sampleRate: '48.0 kHz',
+                        bitrate: '320 kbps',
+                        fadeInDuration: 0,
+                        fadeOutDuration: 0,
+                      };
+                      onUpdateClipAudio(selectedClip.id, { ...currentAudio, volume: newVol });
+                    }}
+                    className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                  />
+                  <div className="flex justify-between text-[9px] text-slate-400 font-mono">
+                    <span>0% (ปิดเสียง)</span>
+                    <span className="font-semibold text-slate-600">100% (1x)</span>
+                    <span>200% (2x)</span>
+                    <span>300% (3x)</span>
+                    <span className="text-amber-600 font-bold">400% (4x)</span>
+                  </div>
+                </div>
+
+                {/* Preset Quick Multipliers */}
+                <div className="grid grid-cols-5 gap-1 pt-1">
+                  {[
+                    { label: '0%', val: 0, desc: 'ปิดเสียง' },
+                    { label: '100%', val: 100, desc: '1x ปกติ' },
+                    { label: '200%', val: 200, desc: '2x ดัง 2 เท่า' },
+                    { label: '300%', val: 300, desc: '3x ดัง 3 เท่า' },
+                    { label: '400%', val: 400, desc: '4x สูงสุด' },
+                  ].map((preset) => {
+                    const activeVol = selectedClip.audioSettings?.volume ?? 100;
+                    return (
+                      <button
+                        key={preset.val}
+                        onClick={() => {
+                          const currentAudio = selectedClip.audioSettings || {
+                            volume: 100,
+                            pan: 0,
+                            equalizer: 'flat',
+                            sampleRate: '48.0 kHz',
+                            bitrate: '320 kbps',
+                            fadeInDuration: 0,
+                            fadeOutDuration: 0,
+                          };
+                          onUpdateClipAudio(selectedClip.id, { ...currentAudio, volume: preset.val });
+                        }}
+                        className={`py-1 px-0.5 rounded text-[10px] font-mono text-center transition border ${
+                          activeVol === preset.val
+                            ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-2xs'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                        }`}
+                        title={preset.desc}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         ) : (
           <div className="text-center py-10 text-slate-400 font-doc">

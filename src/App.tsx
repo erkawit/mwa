@@ -28,7 +28,8 @@ import type {
   TransitionType,
   MotionAnimation,
   ClipTransform,
-  ElementConfig
+  ElementConfig,
+  AudioSettings
 } from './types';
 import { AppSwal, alertSuccess, alertError } from './utils/swal';
 import { getSystemLocalFonts } from './utils/fontManager';
@@ -948,6 +949,12 @@ export function App() {
     );
   };
 
+  const handleUpdateClipAudio = (clipId: string, audio: AudioSettings) => {
+    setClips((prev) =>
+      prev.map((c) => (c.id === clipId ? { ...c, audioSettings: audio } : c))
+    );
+  };
+
   // Unified Bidirectional Selection Sync
   const handleSelectClipSync = (clipId: string | null) => {
     setSelectedClipId(clipId);
@@ -1097,6 +1104,7 @@ export function App() {
           onUpdateClipEffect={handleSaveTextEffect}
           onUpdateClipTransition={handleUpdateClipTransition}
           onUpdateClipMotion={handleUpdateClipMotion}
+          onUpdateClipAudio={handleUpdateClipAudio}
         />
       </div>
 
