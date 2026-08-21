@@ -14,7 +14,7 @@ import {
   Zap,
   Link2
 } from 'lucide-react';
-import type { TimelineClip, TimelineTrack, MediaType, TransitionType } from '../types';
+import type { TimelineClip, TimelineTrack, MediaType, TransitionType, MediaAsset } from '../types';
 import { AppSwal, alertConfirm } from '../utils/swal';
 
 interface TimelineProps {
@@ -42,6 +42,7 @@ interface TimelineProps {
   onEditTextClip: (clip: TimelineClip) => void;
   onReplaceClipMedia?: (clipId: string, file: File) => void;
   onUpdateClipTransition?: (clipId: string, transition: TransitionType) => void;
+  onDropAssetToTrack?: (asset: MediaAsset, trackId: string, startTime: number) => void;
 }
 
 interface SnapTarget {
@@ -76,12 +77,14 @@ export const Timeline: React.FC<TimelineProps> = ({
   onEditTextClip,
   onReplaceClipMedia,
   onUpdateClipTransition,
+  onDropAssetToTrack,
 }) => {
   const [zoom, setZoom] = useState(40); // Pixels per second
   const timelineRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [targetReplacingClipId, setTargetReplacingClipId] = useState<string | null>(null);
   const [isScrubbing, setIsScrubbing] = useState(false);
+  const [dragOverTrackState, setDragOverTrackState] = useState<{ trackId: string; dropTime: number } | null>(null);
 
   // Resizer state (Requirement 6)
   const [isResizing, setIsResizing] = useState(false);
@@ -689,12 +692,56 @@ export const Timeline: React.FC<TimelineProps> = ({
                   <div 
                     key={track.id} 
                     onClick={() => onFocusTrack(track.id)}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'copy';
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const dropX = e.clientX - rect.left;
+                      const dropTime = Math.max(0, parseFloat((dropX / zoom).toFixed(2)));
+                      setDragOverTrackState({ trackId: track.id, dropTime });
+                    }}
+                    onDragLeave={() => {
+                      setDragOverTrackState(null);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setDragOverTrackState(null);
+                      const rawAsset = e.dataTransfer.getData('application/json');
+                      if (rawAsset && onDropAssetToTrack) {
+                        try {
+                          const asset: MediaAsset = JSON.parse(rawAsset);
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const dropX = e.clientX - rect.left;
+                          const dropTime = Math.max(0, parseFloat((dropX / zoom).toFixed(2)));
+                          onDropAssetToTrack(asset, track.id, dropTime);
+                        } catch (err) {
+                          console.warn('Failed to parse dropped asset', err);
+                        }
+                      }
+                    }}
                     className={`h-14 relative transition-colors ${
                       isFocused ? 'bg-blue-50/30 ring-1 ring-blue-300 ring-inset' : 'bg-slate-50/50'
+                    } ${
+                      dragOverTrackState?.trackId === track.id ? 'bg-blue-100/70 ring-2 ring-blue-500 ring-inset' : ''
                     } ${
                       track.locked ? 'bg-slate-200/40 pointer-events-none' : ''
                     }`}
                   >
+                    {/* Ghost Drop Preview Indicator Box */}
+                    {dragOverTrackState?.trackId === track.id && (
+                      <div
+                        style={{
+                          left: `${dragOverTrackState.dropTime * zoom}px`,
+                          width: `${Math.max(60, 6.0 * zoom)}px`,
+                        }}
+                        className="absolute top-1.5 bottom-1.5 bg-blue-500/30 border-2 border-dashed border-blue-600 rounded-sm z-30 pointer-events-none flex items-center justify-center animate-pulse"
+                      >
+                        <span className="text-[10px] font-bold text-blue-700 bg-white/95 px-1.5 py-0.2 rounded shadow">
+                          วางที่ {dragOverTrackState.dropTime.toFixed(1)}s
+                        </span>
+                      </div>
+                    )}
+
                     {/* Clips inside this track */}
                     {trackClips.map((clip) => {
                       const isSelected = selectedClipId === clip.id;

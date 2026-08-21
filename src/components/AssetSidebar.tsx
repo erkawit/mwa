@@ -519,11 +519,18 @@ export const AssetSidebar: React.FC<AssetSidebarProps> = ({
                   return (
                     <div
                       key={asset.id}
+                      draggable={true}
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('application/json', JSON.stringify(asset));
+                        e.dataTransfer.setData('text/plain', asset.id);
+                        e.dataTransfer.effectAllowed = 'copy';
+                      }}
                       onClick={() => onSelectAsset(asset)}
-                      className={`p-2 rounded border flex items-center justify-between cursor-pointer transition ${
+                      title={`💡 ลาก "${asset.name}" ไปวางบน Track Editor ได้ทันที\n• หรือคลิกปุ่ม [+] เพื่อแทรกลงไทม์ไลน์`}
+                      className={`p-2 rounded border flex items-center justify-between cursor-grab active:cursor-grabbing transition ${
                         isActive
                           ? 'bg-blue-50/80 border-blue-400 ring-1 ring-blue-400 shadow-2xs'
-                          : 'bg-white border-slate-200 hover:border-slate-300'
+                          : 'bg-white border-slate-200 hover:border-blue-400 hover:shadow-xs'
                       }`}
                     >
                       <div className="flex items-center gap-2 min-w-0 pr-1">

@@ -453,6 +453,27 @@ export function App() {
     setSelectedClipId(newClip.id);
   };
 
+  // Drop Asset directly from Media Library onto a Track at specific drop time
+  const handleDropAssetToTrack = (asset: MediaAsset, trackId: string, startTime: number) => {
+    let targetTrack = tracks.find((t) => t.id === trackId) || tracks[0];
+
+    const newClip: TimelineClip = {
+      id: `clp-${Date.now()}`,
+      assetId: asset.id,
+      name: asset.name,
+      type: asset.type,
+      trackId: targetTrack.id,
+      startTime: parseFloat(startTime.toFixed(2)),
+      duration: asset.duration || (asset.type === 'image' ? 5.0 : 6.0),
+      color: asset.color || (asset.type === 'video' ? 'bg-blue-600' : asset.type === 'audio' ? 'bg-emerald-600' : 'bg-amber-600'),
+    };
+
+    setClips((prev) => [...prev, newClip]);
+    setSelectedClipId(newClip.id);
+    setFocusedTrackId(targetTrack.id);
+    alertSuccess('วางไฟล์สื่อบนไทม์ไลน์สำเร็จ!', `นำ "${asset.name}" วางบน ${targetTrack.name} ที่เวลา ${startTime.toFixed(1)}s เรียบร้อย`);
+  };
+
   // Add Text Clip directly at Red Playhead (with optional preset styles)
   const handleAddTextClip = (preset?: { name?: string; content?: string; effect?: Partial<TextEffectConfig> }) => {
     let textTrack = tracks.find((t) => t.id === focusedTrackId && t.type === 'text') || tracks.find((t) => t.type === 'text');
@@ -1010,6 +1031,7 @@ export function App() {
         onEditTextClip={setEditingTextClip}
         onReplaceClipMedia={handleReplaceClipMedia}
         onUpdateClipTransition={handleUpdateClipTransition}
+        onDropAssetToTrack={handleDropAssetToTrack}
       />
 
       {/* Text & Font Effects Editor Modal */}
