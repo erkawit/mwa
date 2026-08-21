@@ -955,8 +955,29 @@ export function App() {
     );
   };
 
-  // Unified Bidirectional Selection Sync
+  const handleRenameClip = (clipId: string, newName: string) => {
+    setClips((prev) =>
+      prev.map((c) => (c.id === clipId ? { ...c, name: newName, textContent: c.type === 'text' ? newName : c.textContent } : c))
+    );
+  };
+
+  const handleToggleClipLock = (clipId: string) => {
+    setClips((prev) =>
+      prev.map((c) => (c.id === clipId ? { ...c, locked: !c.locked } : c))
+    );
+  };
+
+  const handleToggleClipMute = (clipId: string) => {
+    setClips((prev) =>
+      prev.map((c) => (c.id === clipId ? { ...c, muted: !c.muted } : c))
+    );
+  };
+
+  // Unified Bidirectional Selection Sync (Requirement 2: Pause playback when selecting another item)
   const handleSelectClipSync = (clipId: string | null) => {
+    if (isPlaying) {
+      setIsPlaying(false);
+    }
     setSelectedClipId(clipId);
     if (clipId) {
       const foundClip = clips.find((c) => c.id === clipId);
@@ -970,6 +991,9 @@ export function App() {
   };
 
   const handleSelectAssetSync = (asset: MediaAsset) => {
+    if (isPlaying) {
+      setIsPlaying(false);
+    }
     setActiveAssetId(asset.id);
     const matchingClip = clips.find((c) => c.assetId === asset.id);
     if (matchingClip) {
@@ -1112,6 +1136,7 @@ export function App() {
       <Timeline
         tracks={tracks}
         clips={clips}
+        assets={assets}
         currentTime={currentTime}
         totalDuration={totalDuration}
         selectedClipId={selectedClipId}
@@ -1139,6 +1164,9 @@ export function App() {
         onCopyClip={handleCopyClip}
         onPasteClip={handlePasteClip}
         onDuplicateClip={handleDuplicateClip}
+        onRenameClip={handleRenameClip}
+        onToggleClipLock={handleToggleClipLock}
+        onToggleClipMute={handleToggleClipMute}
       />
 
       {/* Text & Font Effects Editor Modal */}

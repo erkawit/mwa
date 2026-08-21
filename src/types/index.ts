@@ -302,6 +302,9 @@ export interface TimelineClip {
   color: string;
   localPath?: string;
   isMissing?: boolean;
+  locked?: boolean;
+  muted?: boolean;
+  comment?: string;
   transition?: TransitionType;
   motion?: MotionAnimation;
   transform?: ClipTransform;

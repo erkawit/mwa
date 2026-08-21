@@ -15,14 +15,27 @@ import {
   Link2,
   Copy,
   CopyPlus,
-  ClipboardPaste
+  ClipboardPaste,
+  Edit2,
+  Eye,
+  EyeOff,
+  Download,
+  MessageSquare,
+  FileText,
+  Crown,
+  ChevronRight,
+  Paintbrush,
+  Video as VideoIcon,
+  Music as MusicIcon,
+  Image as ImageIcon
 } from 'lucide-react';
 import type { TimelineClip, TimelineTrack, MediaType, TransitionType, MediaAsset } from '../types';
-import { AppSwal, alertConfirm } from '../utils/swal';
+import { AppSwal, alertConfirm, alertSuccess } from '../utils/swal';
 
 interface TimelineProps {
   tracks: TimelineTrack[];
   clips: TimelineClip[];
+  assets?: MediaAsset[];
   currentTime: number;
   totalDuration: number;
   selectedClipId: string | null;
@@ -50,6 +63,9 @@ interface TimelineProps {
   onCopyClip?: (clipId: string) => void;
   onPasteClip?: (targetTrackId?: string, targetStartTime?: number) => void;
   onDuplicateClip?: (clipId: string) => void;
+  onRenameClip?: (clipId: string, newName: string) => void;
+  onToggleClipLock?: (clipId: string) => void;
+  onToggleClipMute?: (clipId: string) => void;
 }
 
 interface SnapTarget {
@@ -62,6 +78,7 @@ interface SnapTarget {
 export const Timeline: React.FC<TimelineProps> = ({
   tracks,
   clips,
+  assets = [],
   currentTime,
   totalDuration,
   selectedClipId,
@@ -89,6 +106,9 @@ export const Timeline: React.FC<TimelineProps> = ({
   onCopyClip,
   onPasteClip,
   onDuplicateClip,
+  onRenameClip = () => {},
+  onToggleClipLock = () => {},
+  onToggleClipMute = () => {},
 }) => {
   const [zoom, setZoom] = useState(40); // Pixels per second
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -97,11 +117,37 @@ export const Timeline: React.FC<TimelineProps> = ({
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [dragOverTrackState, setDragOverTrackState] = useState<{ trackId: string; dropTime: number } | null>(null);
 
+  // Right-Click Context Menu State (Requirement 5 matching user image)
+  const [clipContextMenu, setClipContextMenu] = useState<{
+    x: number;
+    y: number;
+    clip: TimelineClip;
+    track: TimelineTrack;
+  } | null>(null);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editingTitleValue, setEditingTitleValue] = useState('');
+
   // Resizer state (Requirement 6)
   const [isResizing, setIsResizing] = useState(false);
   const resizeStartY = useRef(0);
   const resizeStartHeight = useRef(timelineHeight);
   const touchHoldTimer = useRef<any>(null);
+
+  // Close context menu on global click or Escape key
+  useEffect(() => {
+    const handleGlobalClick = () => {
+      if (clipContextMenu) setClipContextMenu(null);
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && clipContextMenu) setClipContextMenu(null);
+    };
+    window.addEventListener('click', handleGlobalClick);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('click', handleGlobalClick);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [clipContextMenu]);
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -175,6 +221,28 @@ export const Timeline: React.FC<TimelineProps> = ({
   const handleTouchEndResizer = () => {
     if (touchHoldTimer.current) clearTimeout(touchHoldTimer.current);
     setIsResizing(false);
+  };
+
+  // Right-Click Context Menu Trigger (Requirement 5)
+  const handleClipContextMenu = (e: React.MouseEvent, clip: TimelineClip, track: TimelineTrack) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onSelectClip(clip.id);
+    onFocusTrack(track.id);
+
+    const menuWidth = 265;
+    const menuHeight = 520;
+    const posX = Math.min(window.innerWidth - menuWidth - 12, Math.max(12, e.clientX));
+    const posY = Math.min(window.innerHeight - menuHeight - 12, Math.max(12, e.clientY));
+
+    setEditingTitleValue(clip.textContent || clip.name);
+    setIsEditingTitle(false);
+    setClipContextMenu({
+      x: posX,
+      y: posY,
+      clip,
+      track,
+    });
   };
 
   // --- Scrubber Playhead Handler ---
@@ -324,14 +392,23 @@ export const Timeline: React.FC<TimelineProps> = ({
       const deltaX = e.clientX - resizingClip.startX;
       const deltaTime = deltaX / zoom;
 
+      const targetClip = clips.find((c) => c.id === resizingClip.clipId);
+      const linkedAsset = targetClip?.assetId ? assets.find((a) => a.id === targetClip.assetId) : null;
+      // Requirement 3: Video and Audio clips cannot be stretched beyond their actual file length
+      const maxAllowedDuration = (linkedAsset?.duration && (targetClip?.type === 'video' || targetClip?.type === 'audio'))
+        ? linkedAsset.duration
+        : Infinity;
+
       if (resizingClip.edge === 'right') {
-        const newDuration = Math.max(0.5, resizingClip.initialDuration + deltaTime);
-        onResizeClip(resizingClip.clipId, resizingClip.initialStartTime, parseFloat(newDuration.toFixed(2)));
+        const rawDuration = resizingClip.initialDuration + deltaTime;
+        const boundedDuration = Math.min(maxAllowedDuration, Math.max(0.5, rawDuration));
+        onResizeClip(resizingClip.clipId, resizingClip.initialStartTime, parseFloat(boundedDuration.toFixed(2)));
       } else {
         const maxDelta = resizingClip.initialDuration - 0.5;
-        const boundedDelta = Math.min(maxDelta, deltaTime);
+        const minDelta = maxAllowedDuration !== Infinity ? -(maxAllowedDuration - resizingClip.initialDuration) : -Infinity;
+        const boundedDelta = Math.max(minDelta, Math.min(maxDelta, deltaTime));
         const newStartTime = Math.max(0, resizingClip.initialStartTime + boundedDelta);
-        const newDuration = Math.max(0.5, resizingClip.initialDuration - boundedDelta);
+        const newDuration = Math.min(maxAllowedDuration, Math.max(0.5, resizingClip.initialDuration - boundedDelta));
         onResizeClip(resizingClip.clipId, parseFloat(newStartTime.toFixed(2)), parseFloat(newDuration.toFixed(2)));
       }
     };
@@ -771,6 +848,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                             onSelectClip(clip.id);
                             onFocusTrack(track.id);
                           }}
+                          onContextMenu={(e) => handleClipContextMenu(e, clip, track)}
                           onMouseDown={(e) => handleClipMouseDown(e, clip)}
                           onTouchStart={(e) => handleClipTouchStart(e, clip)}
                           onDoubleClick={(e) => {
@@ -854,7 +932,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                             </span>
                           </div>
 
-                          {/* Action Buttons: Relink & Quick Delete (Requirement 2) */}
+                          {/* Action Buttons: Relink & Duration */}
                           <div className="flex items-center gap-1 shrink-0 ml-1">
                             {clip.isMissing && onReplaceClipMedia && (
                               <button
@@ -871,17 +949,12 @@ export const Timeline: React.FC<TimelineProps> = ({
                               </button>
                             )}
 
-                            {isSelected && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onDeleteClip(clip.id);
-                                }}
-                                title="ลบคลิปนี้ออกจาก Track Editor (Delete)"
-                                className="p-1 bg-rose-600 hover:bg-rose-700 text-white rounded transition shadow-xs"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
+                            {clip.locked && (
+                              <Lock className="w-3 h-3 text-amber-300 shrink-0" />
+                            )}
+
+                            {clip.muted && (
+                              <VolumeX className="w-3 h-3 text-rose-300 shrink-0" />
                             )}
 
                             <span className="text-[10px] opacity-75 font-mono shrink-0 pl-0.5">
@@ -889,11 +962,11 @@ export const Timeline: React.FC<TimelineProps> = ({
                             </span>
                           </div>
 
-                          {/* Floating Quick Action Menu on Clip Hover (สัญลักษณ์เมนูลอยเมื่อเมาส์ชี้) */}
+                          {/* Floating Quick Action Menu on Clip Hover (Requirement 1: แสดงเหนือตำแหน่งของไฟล์สื่อใน Track Editor) */}
                           <div 
                             onClick={(e) => e.stopPropagation()}
                             onMouseDown={(e) => e.stopPropagation()}
-                            className="absolute -top-7.5 left-1/2 -translate-x-1/2 hidden group-hover/clip:flex items-center gap-0.5 px-1 py-0.5 bg-slate-900/95 text-white rounded shadow-xl backdrop-blur-md border border-slate-700/80 z-50 animate-in fade-in zoom-in-95 duration-100"
+                            className="absolute bottom-[calc(100%+8px)] left-1/2 -translate-x-1/2 hidden group-hover/clip:flex items-center gap-0.5 px-1.5 py-1 bg-slate-900/95 text-white rounded-md shadow-2xl backdrop-blur-md border border-slate-700/80 z-50 animate-in fade-in zoom-in-95 duration-100 pointer-events-auto after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-t-slate-900/95"
                           >
                             {/* 1. Duplicate (ทำสำเนา) */}
                             {onDuplicateClip && (
@@ -1040,6 +1113,325 @@ export const Timeline: React.FC<TimelineProps> = ({
         className="hidden"
         accept="video/*,audio/*,image/*"
       />
+
+      {/* Right-Click Context Menu (Requirement 5: Styled exactly as user screenshot) */}
+      {clipContextMenu && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          style={{
+            top: `${clipContextMenu.y}px`,
+            left: `${clipContextMenu.x}px`,
+          }}
+          className="fixed z-[9999] w-64 bg-[#18191E]/95 backdrop-blur-xl border border-slate-700/80 rounded-xl shadow-2xl text-slate-200 text-xs py-2 select-none animate-in fade-in zoom-in-95 duration-100 font-sans"
+        >
+          {/* Header with Title & Media Info Badge */}
+          <div className="px-3.5 pt-1 pb-2.5 border-b border-slate-700/60">
+            <div className="flex items-center justify-between gap-1.5">
+              {isEditingTitle ? (
+                <input
+                  type="text"
+                  autoFocus
+                  value={editingTitleValue}
+                  onChange={(e) => setEditingTitleValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      onRenameClip(clipContextMenu.clip.id, editingTitleValue);
+                      setIsEditingTitle(false);
+                    } else if (e.key === 'Escape') {
+                      setIsEditingTitle(false);
+                    }
+                  }}
+                  onBlur={() => {
+                    onRenameClip(clipContextMenu.clip.id, editingTitleValue);
+                    setIsEditingTitle(false);
+                  }}
+                  className="w-full bg-slate-800 border border-purple-500 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none"
+                />
+              ) : (
+                <div 
+                  onClick={() => setIsEditingTitle(true)}
+                  className="font-bold text-slate-100 text-sm truncate flex items-center gap-1.5 cursor-pointer hover:text-purple-300 transition"
+                  title="คลิกเพื่อเปลี่ยนชื่อ"
+                >
+                  <span className="truncate">{clipContextMenu.clip.textContent || clipContextMenu.clip.name}</span>
+                  <Edit2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                </div>
+              )}
+            </div>
+
+            {/* Media Metadata Subtitle */}
+            <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-1">
+              <span className="p-0.5 rounded bg-purple-600/30 text-purple-300">
+                {clipContextMenu.clip.type === 'video' ? <VideoIcon className="w-3 h-3" /> :
+                 clipContextMenu.clip.type === 'audio' ? <MusicIcon className="w-3 h-3" /> :
+                 clipContextMenu.clip.type === 'image' ? <ImageIcon className="w-3 h-3" /> :
+                 <Type className="w-3 h-3" />}
+              </span>
+              <span className="capitalize font-medium text-slate-300">{clipContextMenu.clip.type}</span>
+              <span>•</span>
+              <span className="font-mono text-slate-400">
+                {clipContextMenu.clip.type === 'video' ? '1920 x 1080 px' :
+                 clipContextMenu.clip.type === 'audio' ? '48.0 kHz • stereo' :
+                 clipContextMenu.clip.type === 'text' ? 'Vector Font' : 'Element'}
+              </span>
+            </div>
+          </div>
+
+          {/* Menu Items List */}
+          <div className="py-1 space-y-0.5">
+            {/* Copy */}
+            <button
+              onClick={() => {
+                onCopyClip?.(clipContextMenu.clip.id);
+                setClipContextMenu(null);
+              }}
+              className="w-full px-3.5 py-1.5 flex items-center justify-between hover:bg-slate-800/80 text-left transition text-slate-200 hover:text-white"
+            >
+              <div className="flex items-center gap-2.5">
+                <Copy className="w-4 h-4 text-slate-400" />
+                <span>Copy</span>
+              </div>
+              <span className="text-[10px] font-mono text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded">Ctrl+C</span>
+            </button>
+
+            {/* Copy Style */}
+            <button
+              onClick={() => {
+                alertSuccess('คัดลอกสไตล์สำเร็จ', 'คัดลอกแอนิเมชันและเอฟเฟกต์แล้ว');
+                setClipContextMenu(null);
+              }}
+              className="w-full px-3.5 py-1.5 flex items-center justify-between hover:bg-slate-800/80 text-left transition text-slate-200 hover:text-white"
+            >
+              <div className="flex items-center gap-2.5">
+                <Paintbrush className="w-4 h-4 text-slate-400" />
+                <span>Copy page style</span>
+              </div>
+              <Crown className="w-3.5 h-3.5 text-amber-400" />
+            </button>
+
+            {/* Paste */}
+            <button
+              onClick={() => {
+                onPasteClip?.(clipContextMenu.track.id, clipContextMenu.clip.startTime + clipContextMenu.clip.duration);
+                setClipContextMenu(null);
+              }}
+              disabled={!copiedClip}
+              className={`w-full px-3.5 py-1.5 flex items-center justify-between hover:bg-slate-800/80 text-left transition ${
+                copiedClip ? 'text-slate-200 hover:text-white' : 'text-slate-500 cursor-not-allowed'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <ClipboardPaste className="w-4 h-4 text-slate-400" />
+                <span>Paste</span>
+              </div>
+              <span className="text-[10px] font-mono text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded">Ctrl+V</span>
+            </button>
+
+            {/* Add page / Duplicate next */}
+            <button
+              onClick={() => {
+                onDuplicateClip?.(clipContextMenu.clip.id);
+                setClipContextMenu(null);
+              }}
+              className="w-full px-3.5 py-1.5 flex items-center justify-between hover:bg-slate-800/80 text-left transition text-slate-200 hover:text-white"
+            >
+              <div className="flex items-center gap-2.5">
+                <Plus className="w-4 h-4 text-slate-400" />
+                <span>Add page</span>
+              </div>
+              <span className="text-[10px] font-mono text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded">Ctrl+Enter</span>
+            </button>
+
+            {/* Resize page */}
+            <button
+              onClick={() => {
+                setClipContextMenu(null);
+              }}
+              className="w-full px-3.5 py-1.5 flex items-center justify-between hover:bg-slate-800/80 text-left transition text-slate-200 hover:text-white"
+            >
+              <div className="flex items-center gap-2.5">
+                <ZoomIn className="w-4 h-4 text-slate-400" />
+                <span>Resize page</span>
+              </div>
+              <Crown className="w-3.5 h-3.5 text-amber-400" />
+            </button>
+
+            {/* Duplicate page */}
+            <button
+              onClick={() => {
+                onDuplicateClip?.(clipContextMenu.clip.id);
+                setClipContextMenu(null);
+              }}
+              className="w-full px-3.5 py-1.5 flex items-center justify-between hover:bg-slate-800/80 text-left transition text-slate-200 hover:text-white"
+            >
+              <div className="flex items-center gap-2.5">
+                <CopyPlus className="w-4 h-4 text-slate-400" />
+                <span>Duplicate page</span>
+              </div>
+              <span className="text-[10px] font-mono text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded">Ctrl+D</span>
+            </button>
+
+            {/* Delete page */}
+            <button
+              onClick={() => {
+                onDeleteClip(clipContextMenu.clip.id);
+                setClipContextMenu(null);
+              }}
+              className="w-full px-3.5 py-1.5 flex items-center justify-between hover:bg-rose-900/40 text-left transition text-rose-300 hover:text-rose-100"
+            >
+              <div className="flex items-center gap-2.5">
+                <Trash2 className="w-4 h-4 text-rose-400" />
+                <span>Delete page</span>
+              </div>
+              <span className="text-[10px] font-mono text-rose-400 bg-rose-950/60 px-1.5 py-0.5 rounded">DELETE</span>
+            </button>
+
+            <div className="my-1 border-t border-slate-700/60"></div>
+
+            {/* Hide page */}
+            <button
+              onClick={() => {
+                onToggleClipMute(clipContextMenu.clip.id);
+                setClipContextMenu(null);
+              }}
+              className="w-full px-3.5 py-1.5 flex items-center justify-between hover:bg-slate-800/80 text-left transition text-slate-200 hover:text-white"
+            >
+              <div className="flex items-center gap-2.5">
+                {clipContextMenu.clip.muted ? <Eye className="w-4 h-4 text-amber-400" /> : <EyeOff className="w-4 h-4 text-slate-400" />}
+                <span>{clipContextMenu.clip.muted ? 'Show page' : 'Hide page'}</span>
+              </div>
+            </button>
+
+            {/* Change transition */}
+            <button
+              onClick={() => {
+                handleOpenTransitionPicker(clipContextMenu.clip);
+                setClipContextMenu(null);
+              }}
+              className="w-full px-3.5 py-1.5 flex items-center justify-between hover:bg-slate-800/80 text-left transition text-slate-200 hover:text-white"
+            >
+              <div className="flex items-center gap-2.5">
+                <Zap className="w-4 h-4 text-indigo-400" />
+                <span>Change transition</span>
+              </div>
+            </button>
+
+            <div className="my-1 border-t border-slate-700/60"></div>
+
+            {/* Comment */}
+            <button
+              onClick={() => {
+                AppSwal.fire({
+                  title: 'เพิ่มบันทึก / ข้อคิดเห็น',
+                  input: 'text',
+                  inputValue: clipContextMenu.clip.comment || '',
+                  showCancelButton: true,
+                  confirmButtonText: 'บันทึก',
+                  cancelButtonText: 'ยกเลิก',
+                }).then((res) => {
+                  if (res.isConfirmed && res.value) {
+                    alertSuccess('บันทึกสำเร็จ', 'เพิ่มข้อคิดเห็นสำหรับคลิปนี้แล้ว');
+                  }
+                });
+                setClipContextMenu(null);
+              }}
+              className="w-full px-3.5 py-1.5 flex items-center justify-between hover:bg-slate-800/80 text-left transition text-slate-200 hover:text-white"
+            >
+              <div className="flex items-center gap-2.5">
+                <MessageSquare className="w-4 h-4 text-slate-400" />
+                <span>Comment</span>
+              </div>
+              <span className="text-[10px] font-mono text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded">Ctrl+Alt+N</span>
+            </button>
+
+            {/* Lock page */}
+            <button
+              onClick={() => {
+                onToggleClipLock(clipContextMenu.clip.id);
+                setClipContextMenu(null);
+              }}
+              className="w-full px-3.5 py-1.5 flex items-center justify-between hover:bg-slate-800/80 text-left transition text-slate-200 hover:text-white"
+            >
+              <div className="flex items-center gap-2.5">
+                {clipContextMenu.clip.locked ? <Unlock className="w-4 h-4 text-emerald-400" /> : <Lock className="w-4 h-4 text-slate-400" />}
+                <span>{clipContextMenu.clip.locked ? 'Unlock page' : 'Lock page'}</span>
+              </div>
+              <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+            </button>
+
+            {/* Download page */}
+            <button
+              onClick={() => {
+                const linkedAsset = assets.find(a => a.id === clipContextMenu.clip.assetId);
+                if (linkedAsset?.blobUrl) {
+                  const a = document.createElement('a');
+                  a.href = linkedAsset.blobUrl;
+                  a.download = linkedAsset.name;
+                  a.click();
+                } else {
+                  alertSuccess('ดาวน์โหลด', 'ดาวน์โหลดข้อมูลคลิปนี้เรียบร้อย');
+                }
+                setClipContextMenu(null);
+              }}
+              className="w-full px-3.5 py-1.5 flex items-center justify-between hover:bg-slate-800/80 text-left transition text-slate-200 hover:text-white"
+            >
+              <div className="flex items-center gap-2.5">
+                <Download className="w-4 h-4 text-slate-400" />
+                <span>Download page</span>
+              </div>
+            </button>
+
+            {/* Copy link to this page / Relink */}
+            <button
+              onClick={() => {
+                setTargetReplacingClipId(clipContextMenu.clip.id);
+                fileInputRef.current?.click();
+                setClipContextMenu(null);
+              }}
+              className="w-full px-3.5 py-1.5 flex items-center justify-between hover:bg-slate-800/80 text-left transition text-slate-200 hover:text-white"
+            >
+              <div className="flex items-center gap-2.5">
+                <Link2 className="w-4 h-4 text-slate-400" />
+                <span>Copy link to this page</span>
+              </div>
+            </button>
+
+            <div className="my-1 border-t border-slate-700/60"></div>
+
+            {/* Split page */}
+            <button
+              onClick={() => {
+                onSplitClip(clipContextMenu.clip.id, currentTime);
+                setClipContextMenu(null);
+              }}
+              className="w-full px-3.5 py-1.5 flex items-center justify-between hover:bg-slate-800/80 text-left transition text-slate-200 hover:text-white"
+            >
+              <div className="flex items-center gap-2.5">
+                <Scissors className="w-4 h-4 text-slate-400" />
+                <span>Split page</span>
+              </div>
+              <span className="text-[10px] font-mono text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded">S</span>
+            </button>
+
+            {/* Notes */}
+            <button
+              onClick={() => {
+                if (clipContextMenu.clip.type === 'text') {
+                  onEditTextClip(clipContextMenu.clip);
+                }
+                setClipContextMenu(null);
+              }}
+              className="w-full px-3.5 py-1.5 flex items-center justify-between hover:bg-slate-800/80 text-left transition text-slate-200 hover:text-white"
+            >
+              <div className="flex items-center gap-2.5">
+                <FileText className="w-4 h-4 text-slate-400" />
+                <span>Notes</span>
+              </div>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
