@@ -33,10 +33,13 @@ export async function getSystemLocalFonts(): Promise<CustomFont[]> {
   return [];
 }
 
+const USER_FONTS_STORAGE_KEY = 'MWA_USER_CUSTOM_FONTS';
+
 /**
  * Dynamically register a user-uploaded custom font (.ttf, .otf, .woff, .woff2)
+ * Scoped specifically to the uploading User ID
  */
-export async function registerCustomFont(file: File): Promise<CustomFont> {
+export async function registerCustomFont(file: File, userId?: string): Promise<CustomFont> {
   const fontName = file.name.replace(/\.[^/.]+$/, '').trim();
   const fontUrl = URL.createObjectURL(file);
   
@@ -44,12 +47,44 @@ export async function registerCustomFont(file: File): Promise<CustomFont> {
   const loadedFace = await fontFace.load();
   document.fonts.add(loadedFace);
 
-  return {
-    name: `${fontName} (ฟอนต์ที่อัปโหลด)`,
+  const newFont: CustomFont = {
+    name: `${fontName} (ฟอนต์ของคุณ)`,
     family: `"${fontName}", sans-serif`,
     url: fontUrl,
     isUploaded: true,
+    uploadedBy: userId || 'anonymous',
   };
+
+  saveUserCustomFont(userId || 'anonymous', newFont);
+  return newFont;
+}
+
+export function getUserCustomFonts(userId?: string): CustomFont[] {
+  try {
+    const data = localStorage.getItem(USER_FONTS_STORAGE_KEY);
+    if (!data) return [];
+    const all: CustomFont[] = JSON.parse(data);
+    if (!userId) return all.filter(f => !f.uploadedBy || f.uploadedBy === 'anonymous');
+    return all.filter(f => f.uploadedBy === userId);
+  } catch {
+    return [];
+  }
+}
+
+export function saveUserCustomFont(userId: string, font: CustomFont): void {
+  try {
+    const data = localStorage.getItem(USER_FONTS_STORAGE_KEY);
+    const list: CustomFont[] = data ? JSON.parse(data) : [];
+    const existingIndex = list.findIndex(f => f.name === font.name && f.uploadedBy === userId);
+    if (existingIndex >= 0) {
+      list[existingIndex] = font;
+    } else {
+      list.push(font);
+    }
+    localStorage.setItem(USER_FONTS_STORAGE_KEY, JSON.stringify(list));
+  } catch (e) {
+    console.error('Failed to persist user custom font', e);
+  }
 }
 
 /**

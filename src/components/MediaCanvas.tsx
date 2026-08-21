@@ -123,21 +123,34 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
     const classes: string[] = [];
 
     // Transition styles
-    if (transition === 'cross-dissolve' || transition === 'fade-black') {
-      classes.push('transition-opacity duration-500');
-    } else if (transition === 'blur') {
-      classes.push('filter blur-0 transition-all');
-    } else if (transition === 'zoom-in') {
-      classes.push('transition-transform duration-500 transform');
-    }
+    if (transition === 'fade-in') classes.push('motion-fade-in');
+    else if (transition === 'fade-out') classes.push('motion-fade-out');
+    else if (transition === 'cross-dissolve' || transition === 'fade-black') classes.push('transition-opacity duration-500');
+    else if (transition === 'blur') classes.push('filter blur-0 transition-all');
+    else if (transition === 'zoom-in') classes.push('transition-transform duration-500 transform');
+    else if (transition === 'slide-left') classes.push('motion-slide-left');
+    else if (transition === 'slide-right') classes.push('motion-slide-right');
 
     // In Animation
-    if (motion?.inAnimation === 'fade-in') classes.push('animate-in fade-in duration-500');
+    if (motion?.inAnimation === 'fade-in') classes.push('motion-fade-in');
     else if (motion?.inAnimation === 'slide-up') classes.push('motion-slide-up');
+    else if (motion?.inAnimation === 'slide-down') classes.push('motion-slide-down');
+    else if (motion?.inAnimation === 'slide-left') classes.push('motion-slide-left');
+    else if (motion?.inAnimation === 'slide-right') classes.push('motion-slide-right');
     else if (motion?.inAnimation === 'pop-in') classes.push('motion-pop-in');
     else if (motion?.inAnimation === 'bounce-in') classes.push('animate-bounce');
     else if (motion?.inAnimation === 'flip-in') classes.push('motion-flip-in');
     else if (motion?.inAnimation === 'spin-in') classes.push('motion-spin-in');
+
+    // Out Animation
+    if (motion?.outAnimation === 'fade-out') classes.push('motion-fade-out');
+    else if (motion?.outAnimation === 'slide-down') classes.push('motion-slide-down');
+    else if (motion?.outAnimation === 'slide-up') classes.push('motion-slide-up');
+    else if (motion?.outAnimation === 'slide-left') classes.push('motion-slide-left');
+    else if (motion?.outAnimation === 'slide-right') classes.push('motion-slide-right');
+    else if (motion?.outAnimation === 'scale-out') classes.push('motion-scale-out');
+    else if (motion?.outAnimation === 'blur-out') classes.push('motion-blur-out');
+    else if (motion?.outAnimation === 'fade-black') classes.push('motion-fade-out');
 
     // Loop Animation
     if (motion?.loopAnimation === 'pulse') classes.push('animate-pulse');

@@ -4,6 +4,8 @@ export type TransitionType =
   | 'none' 
   | 'cross-dissolve' 
   | 'fade-black' 
+  | 'fade-in'
+  | 'fade-out'
   | 'slide-left' 
   | 'slide-right' 
   | 'zoom-in' 
@@ -12,8 +14,8 @@ export type TransitionType =
   | 'blur';
 
 export interface MotionAnimation {
-  inAnimation?: 'none' | 'fade-in' | 'slide-up' | 'pop-in' | 'bounce-in' | 'flip-in' | 'typewriter' | 'spin-in';
-  outAnimation?: 'none' | 'fade-out' | 'slide-down' | 'scale-out' | 'blur-out';
+  inAnimation?: 'none' | 'fade-in' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'pop-in' | 'bounce-in' | 'flip-in' | 'typewriter' | 'spin-in';
+  outAnimation?: 'none' | 'fade-out' | 'slide-down' | 'slide-up' | 'slide-left' | 'slide-right' | 'scale-out' | 'blur-out' | 'fade-black';
   loopAnimation?: 'none' | 'pulse' | 'floating' | 'shake' | 'glow-wave';
   duration?: number; // in seconds, default 0.6s
 }
@@ -233,6 +235,7 @@ export interface CustomFont {
   family: string;
   url?: string;
   isUploaded?: boolean;
+  uploadedBy?: string; // Scoped to specific user ID/username
 }
 
 export interface SystemUpdateInfo {

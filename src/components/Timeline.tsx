@@ -11,7 +11,8 @@ import {
   Plus,
   Type,
   Sparkles,
-  Zap
+  Zap,
+  Link2
 } from 'lucide-react';
 import type { TimelineClip, TimelineTrack, MediaType } from '../types';
 import { AppSwal, alertConfirm } from '../utils/swal';
@@ -39,6 +40,7 @@ interface TimelineProps {
   onAddTrack: (type: MediaType) => void;
   onAddTextClip: () => void;
   onEditTextClip: (clip: TimelineClip) => void;
+  onReplaceClipMedia?: (clipId: string, file: File) => void;
 }
 
 interface SnapTarget {
@@ -71,9 +73,12 @@ export const Timeline: React.FC<TimelineProps> = ({
   onAddTrack,
   onAddTextClip,
   onEditTextClip,
+  onReplaceClipMedia,
 }) => {
   const [zoom, setZoom] = useState(40); // Pixels per second
   const timelineRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [targetReplacingClipId, setTargetReplacingClipId] = useState<string | null>(null);
   const [isScrubbing, setIsScrubbing] = useState(false);
 
   // Resizer state (Requirement 6)
@@ -81,6 +86,15 @@ export const Timeline: React.FC<TimelineProps> = ({
   const resizeStartY = useRef(0);
   const resizeStartHeight = useRef(timelineHeight);
   const touchHoldTimer = useRef<any>(null);
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && targetReplacingClipId && onReplaceClipMedia) {
+      onReplaceClipMedia(targetReplacingClipId, file);
+      setTargetReplacingClipId(null);
+    }
+    e.target.value = '';
+  };
 
   // Dragging clip state (Requirement 1 & 5)
   const [draggingClipId, setDraggingClipId] = useState<string | null>(null);
@@ -675,7 +689,7 @@ export const Timeline: React.FC<TimelineProps> = ({
                           title={isTextClip ? 'ดับเบิลคลิกเพื่อแก้ไขข้อความ & Effect' : 'คลิกค้างเพื่อลากเลื่อน หรือลากขอบซ้าย/ขวาเพื่อยืดขยายความยาว'}
                           className={`absolute top-1.5 bottom-1.5 rounded-sm border px-2 py-1 flex items-center justify-between text-xs cursor-move transition-all select-none group/clip ${
                             clip.isMissing
-                              ? 'opacity-60 bg-amber-50/70 border-amber-400 border-dashed text-amber-900 ring-1 ring-amber-300'
+                              ? 'bg-rose-900/90 border-2 border-rose-500 text-rose-100 ring-1 ring-rose-400 shadow-md font-medium'
                               : isDragging 
                               ? 'opacity-70 ring-2 ring-amber-400 z-30 shadow-md' 
                               : isSelected
@@ -717,8 +731,8 @@ export const Timeline: React.FC<TimelineProps> = ({
                           {/* Content */}
                           <div className="flex items-center gap-1.5 min-w-0 pr-1 pl-1">
                             {clip.isMissing && (
-                              <span className="px-1 py-0.2 bg-amber-200 text-amber-900 rounded font-mono text-[9px] shrink-0 font-bold">
-                                ⚠️ ไม่พบไฟล์
+                              <span className="px-1.5 py-0.2 bg-rose-500 text-white rounded font-sans text-[9px] shrink-0 font-bold flex items-center gap-0.5 animate-pulse">
+                                ⚠️ ไฟล์ถูกลบจากคลัง
                               </span>
                             )}
 
@@ -743,9 +757,40 @@ export const Timeline: React.FC<TimelineProps> = ({
                             </span>
                           </div>
 
-                          <span className="text-[10px] opacity-75 font-mono shrink-0 ml-1 pr-1">
-                            {clip.duration.toFixed(1)}s
-                          </span>
+                          {/* Action Buttons: Relink & Quick Delete (Requirement 2) */}
+                          <div className="flex items-center gap-1 shrink-0 ml-1">
+                            {clip.isMissing && onReplaceClipMedia && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setTargetReplacingClipId(clip.id);
+                                  fileInputRef.current?.click();
+                                }}
+                                title="คลิกเพื่อเลือกไฟล์ใหม่มาแทนที่ และนำเข้าสู่คลังสื่ออัตโนมัติ"
+                                className="px-1.5 py-0.5 bg-rose-600 hover:bg-rose-500 text-white border border-rose-300 rounded text-[10px] font-medium flex items-center gap-1 shadow-sm transition"
+                              >
+                                <Link2 className="w-3 h-3" />
+                                <span>ลิงก์ไฟล์ใหม่</span>
+                              </button>
+                            )}
+
+                            {isSelected && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onDeleteClip(clip.id);
+                                }}
+                                title="ลบคลิปนี้ออกจาก Track Editor (Delete)"
+                                className="p-1 bg-rose-600 hover:bg-rose-700 text-white rounded transition shadow-xs"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+
+                            <span className="text-[10px] opacity-75 font-mono shrink-0 pl-0.5">
+                              {clip.duration.toFixed(1)}s
+                            </span>
+                          </div>
 
                           {/* Right Trim Handle (Requirement 8) */}
                           <div
@@ -765,6 +810,15 @@ export const Timeline: React.FC<TimelineProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Hidden File Picker for Relinking / Replacing Missing Media */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileInputChange}
+        className="hidden"
+        accept="video/*,audio/*,image/*"
+      />
     </div>
   );
 };

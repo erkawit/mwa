@@ -27,6 +27,7 @@ interface InspectorPanelProps {
   selectedClip: TimelineClip | null;
   activeAsset: MediaAsset | null;
   customFonts: CustomFont[];
+  userId?: string;
   onOpenTextEffectEditor: (clip: TimelineClip) => void;
   onUpdateClipEffect: (clipId: string, text: string, effect: TextEffectConfig) => void;
   onUpdateClipTransition?: (clipId: string, transition: TransitionType) => void;
@@ -38,6 +39,7 @@ interface InspectorPanelProps {
 export const InspectorPanel: React.FC<InspectorPanelProps> = ({
   selectedClip,
   customFonts,
+  userId,
   onOpenTextEffectEditor,
   onUpdateClipEffect,
   onUpdateClipTransition = () => {},
@@ -68,7 +70,11 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
     }
   );
 
-  const allFonts = [...defaultFonts, ...customFonts];
+  // Scoped Fonts: Default system fonts + custom fonts uploaded by this specific user
+  const visibleCustomFonts = customFonts.filter(
+    (f) => !f.uploadedBy || f.uploadedBy === 'anonymous' || f.uploadedBy === userId
+  );
+  const allFonts = [...defaultFonts, ...visibleCustomFonts];
 
   // Motion and Transition handlers
   const currentTransition = selectedClip?.transition || 'none';
@@ -152,6 +158,8 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               <div className="grid grid-cols-3 gap-1.5">
                 {[
                   { id: 'none', label: 'ไม่มี (None)' },
+                  { id: 'fade-in', label: 'ค่อยๆ ปรากฏ (Fade In)' },
+                  { id: 'fade-out', label: 'ค่อยๆ ดับ (Fade Out)' },
                   { id: 'cross-dissolve', label: 'ละลายจาง (Dissolve)' },
                   { id: 'fade-black', label: 'มืดดับ (Fade Black)' },
                   { id: 'slide-left', label: 'เลื่อนซ้าย (Slide L)' },
@@ -176,7 +184,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               </div>
             </div>
 
-            {/* --- SECTION 2: Motion Animations Tool for Video, Image, and Text (Requirement 2) --- */}
+            {/* --- SECTION 2: Motion Animations Tool for Video, Image, and Text --- */}
             <div className="space-y-3 pt-2 border-t border-slate-200">
               <div className="flex items-center justify-between">
                 <label className="font-semibold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider text-[10px]">
@@ -188,7 +196,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 </span>
               </div>
 
-              {/* In Animation */}
+              {/* In Animation (เปิดตัว) */}
               <div className="space-y-1">
                 <div className="flex justify-between text-slate-600 text-[11px]">
                   <span className="flex items-center gap-1">
@@ -201,6 +209,9 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     { id: 'none', label: 'None' },
                     { id: 'fade-in', label: 'Fade In' },
                     { id: 'slide-up', label: 'Slide Up' },
+                    { id: 'slide-down', label: 'Slide Down' },
+                    { id: 'slide-left', label: 'Slide Left' },
+                    { id: 'slide-right', label: 'Slide Right' },
                     { id: 'pop-in', label: 'Pop In' },
                     { id: 'bounce-in', label: 'Bounce' },
                     { id: 'flip-in', label: 'Flip 3D' },
@@ -217,6 +228,41 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                       }`}
                     >
                       {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Out Animation (ปิดท้าย) */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-slate-600 text-[11px]">
+                  <span className="flex items-center gap-1">
+                    <Play className="w-3 h-3 text-rose-600 rotate-180" />
+                    <span>ปิดท้าย (Out Animation):</span>
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-1">
+                  {[
+                    { id: 'none', label: 'None' },
+                    { id: 'fade-out', label: 'Fade Out' },
+                    { id: 'slide-down', label: 'Slide Down' },
+                    { id: 'slide-up', label: 'Slide Up' },
+                    { id: 'slide-left', label: 'Slide Left' },
+                    { id: 'slide-right', label: 'Slide Right' },
+                    { id: 'scale-out', label: 'Scale Out' },
+                    { id: 'blur-out', label: 'Blur Out' },
+                    { id: 'fade-black', label: 'Fade Black' },
+                  ].map((o) => (
+                    <button
+                      key={o.id}
+                      onClick={() => handleSelectMotion('outAnimation', o.id)}
+                      className={`py-1 px-1 rounded text-center text-[10px] border transition ${
+                        currentMotion.outAnimation === o.id
+                          ? 'bg-rose-600 text-white border-rose-600 font-medium shadow-2xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      {o.label}
                     </button>
                   ))}
                 </div>

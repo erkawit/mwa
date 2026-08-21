@@ -18,6 +18,7 @@ import { alertError } from '../utils/swal';
 interface TextEffectEditorProps {
   clip: TimelineClip;
   customFonts: CustomFont[];
+  userId?: string;
   onAddCustomFont: (font: CustomFont) => void;
   onSave: (clipId: string, text: string, effect: TextEffectConfig) => void;
   onClose: () => void;
@@ -26,6 +27,7 @@ interface TextEffectEditorProps {
 export const TextEffectEditor: React.FC<TextEffectEditorProps> = ({
   clip,
   customFonts,
+  userId,
   onAddCustomFont,
   onSave,
   onClose,
@@ -58,7 +60,7 @@ export const TextEffectEditor: React.FC<TextEffectEditorProps> = ({
     if (!file) return;
 
     try {
-      const loaded = await registerCustomFont(file);
+      const loaded = await registerCustomFont(file, userId);
       onAddCustomFont(loaded);
       setConfig(prev => ({ ...prev, fontFamily: loaded.family }));
     } catch (err) {

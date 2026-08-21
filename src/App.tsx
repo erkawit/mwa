@@ -55,10 +55,30 @@ const initialTracks: TimelineTrack[] = [
   { id: 'trk-audio', name: 'เสียง & ดนตรี (Audio 1)', type: 'audio', muted: false, locked: false, solo: false },
 ];
 
+// Storage Keys for Refresh Persistence (Requirement 1)
+const CURRENT_VIEW_KEY = 'MWA_CURRENT_VIEW';
+const ACTIVE_STUDIO_STATE_KEY = 'MWA_ACTIVE_STUDIO_STATE';
+
+function loadSavedStudioState() {
+  try {
+    const raw = localStorage.getItem(ACTIVE_STUDIO_STATE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {
+    console.warn('Failed to load active studio state', e);
+  }
+  return null;
+}
+
 export function App() {
-  // Navigation & Auth State
-  const [currentView, setCurrentView] = useState<'welcome' | 'studio'>('welcome');
-  const [userSession, setUserSession] = useState<UserSession | null>(authService.getSession());
+  const savedState = loadSavedStudioState();
+  const session = authService.getSession();
+  const savedView = (localStorage.getItem(CURRENT_VIEW_KEY) as 'welcome' | 'studio') || 'welcome';
+
+  // Navigation & Auth State - Persists across page refreshes
+  const [currentView, setCurrentView] = useState<'welcome' | 'studio'>(
+    session && savedView === 'studio' ? 'studio' : 'welcome'
+  );
+  const [userSession, setUserSession] = useState<UserSession | null>(session);
 
   // Modal & Guide Tour States
   const [isTourOpen, setIsTourOpen] = useState(false);
@@ -69,12 +89,22 @@ export function App() {
   const [isUserProfileModalOpen, setIsUserProfileModalOpen] = useState(false);
   const [relinkTargetAsset, setRelinkTargetAsset] = useState<MediaAsset | null>(null);
 
-  // Project & Studio State
-  const [projectSettings, setProjectSettings] = useState<ProjectSettings>(initialSettings);
-  const [folders, setFolders] = useState<MediaFolder[]>(initialFolders);
-  const [assets, setAssets] = useState<MediaAsset[]>(initialAssets);
-  const [tracks, setTracks] = useState<TimelineTrack[]>(initialTracks);
-  const [clips, setClips] = useState<TimelineClip[]>(initialClips);
+  // Project & Studio State with Persistence
+  const [projectSettings, setProjectSettings] = useState<ProjectSettings>(
+    savedState?.projectSettings || initialSettings
+  );
+  const [folders, setFolders] = useState<MediaFolder[]>(
+    savedState?.folders || initialFolders
+  );
+  const [assets, setAssets] = useState<MediaAsset[]>(
+    savedState?.assets || initialAssets
+  );
+  const [tracks, setTracks] = useState<TimelineTrack[]>(
+    savedState?.tracks || initialTracks
+  );
+  const [clips, setClips] = useState<TimelineClip[]>(
+    savedState?.clips || initialClips
+  );
   const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([]);
   const [customFonts, setCustomFonts] = useState<CustomFont[]>([]);
   
@@ -82,6 +112,29 @@ export function App() {
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [focusedTrackId, setFocusedTrackId] = useState<string | null>('trk-video');
   const [editingTextClip, setEditingTextClip] = useState<TimelineClip | null>(null);
+
+  // Auto-Save Active Studio State so browser refresh retains all current work
+  useEffect(() => {
+    if (userSession && currentView === 'studio') {
+      localStorage.setItem(CURRENT_VIEW_KEY, 'studio');
+      const serializableAssets = assets.map(a => ({
+        ...a,
+        file: undefined,
+      }));
+      localStorage.setItem(
+        ACTIVE_STUDIO_STATE_KEY,
+        JSON.stringify({
+          projectSettings,
+          folders,
+          assets: serializableAssets,
+          tracks,
+          clips,
+        })
+      );
+    } else if (currentView === 'welcome') {
+      localStorage.setItem(CURRENT_VIEW_KEY, 'welcome');
+    }
+  }, [currentView, userSession, projectSettings, folders, assets, tracks, clips]);
 
   // Admin Notification for Pending Registrations
   useEffect(() => {
@@ -264,6 +317,59 @@ export function App() {
     if (activeAssetId === assetId) {
       setActiveAssetId(null);
     }
+    // Mark timeline clips referring to this deleted asset as isMissing = true so they show red warning in Track Editor
+    setClips((prev) =>
+      prev.map((c) =>
+        c.assetId === assetId
+          ? { ...c, isMissing: true }
+          : c
+      )
+    );
+  };
+
+  // Replace Missing Media or Change File for Timeline Clip (Requirement 2)
+  const handleReplaceClipMedia = (clipId: string, newFile: File) => {
+    const fileType = newFile.type.startsWith('video/')
+      ? 'video'
+      : newFile.type.startsWith('audio/')
+      ? 'audio'
+      : 'image';
+    const blobUrl = URL.createObjectURL(newFile);
+    const newAsset: MediaAsset = {
+      id: `ast-${Date.now()}`,
+      name: newFile.name,
+      type: fileType,
+      file: newFile,
+      blobUrl,
+      localPath: newFile.name,
+      duration: 8.0,
+      size: `${(newFile.size / (1024 * 1024)).toFixed(1)} MB`,
+      rawSize: newFile.size,
+      color: fileType === 'video' ? 'bg-blue-600' : fileType === 'audio' ? 'bg-emerald-600' : 'bg-amber-600',
+      createdAt: Date.now(),
+    };
+
+    // 1. Add new file into Media Library assets
+    setAssets((prev) => [newAsset, ...prev]);
+
+    // 2. Replace clip on timeline and clear isMissing
+    setClips((prev) =>
+      prev.map((c) =>
+        c.id === clipId
+          ? {
+              ...c,
+              assetId: newAsset.id,
+              name: newFile.name,
+              type: fileType,
+              color: newAsset.color || c.color,
+              isMissing: false,
+              localPath: newFile.name,
+            }
+          : c
+      )
+    );
+    setActiveAssetId(newAsset.id);
+    alertSuccess('ลิงก์ไฟล์ใหม่สำเร็จ!', `เพิ่ม "${newFile.name}" เข้าสู่คลังสื่อและแทนที่บนไทม์ไลน์แล้ว`);
   };
 
   const handleRenameAsset = (assetId: string, newName: string) => {
@@ -842,6 +948,7 @@ export function App() {
           selectedClip={selectedClip}
           activeAsset={activeAsset}
           customFonts={customFonts}
+          userId={userSession?.id}
           onOpenTextEffectEditor={setEditingTextClip}
           onUpdateClipEffect={handleSaveTextEffect}
           onUpdateClipTransition={handleUpdateClipTransition}
@@ -873,6 +980,7 @@ export function App() {
         onAddTrack={handleAddTrack}
         onAddTextClip={handleAddTextClip}
         onEditTextClip={setEditingTextClip}
+        onReplaceClipMedia={handleReplaceClipMedia}
       />
 
       {/* Text & Font Effects Editor Modal */}
@@ -880,6 +988,7 @@ export function App() {
         <TextEffectEditor
           clip={editingTextClip}
           customFonts={customFonts}
+          userId={userSession?.id}
           onAddCustomFont={(newFont) => setCustomFonts((prev) => [...prev, newFont])}
           onSave={handleSaveTextEffect}
           onClose={() => setEditingTextClip(null)}

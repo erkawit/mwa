@@ -167,6 +167,8 @@ class AuthService {
   public logout() {
     this.currentSession = null;
     localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem('MWA_CURRENT_VIEW');
+    localStorage.removeItem('MWA_ACTIVE_STUDIO_STATE');
   }
 
   // Saved Projects Management
