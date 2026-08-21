@@ -1,4 +1,111 @@
-export type MediaType = 'video' | 'audio' | 'image' | 'text';
+export type MediaType = 'video' | 'audio' | 'image' | 'text' | 'shape' | 'frame' | 'chart' | 'sheet' | 'table';
+
+export type ShapeType = 
+  | 'rectangle' 
+  | 'rounded-rect' 
+  | 'circle' 
+  | 'ellipse' 
+  | 'triangle' 
+  | 'triangle-right' 
+  | 'star-5' 
+  | 'star-6' 
+  | 'heart' 
+  | 'diamond' 
+  | 'pentagon' 
+  | 'hexagon' 
+  | 'octagon' 
+  | 'arrow-right' 
+  | 'arrow-left' 
+  | 'arrow-up' 
+  | 'arrow-down' 
+  | 'speech-bubble' 
+  | 'cross' 
+  | 'badge' 
+  | 'ring' 
+  | 'trapezoid' 
+  | 'parallelogram';
+
+export interface ShapeConfig {
+  shapeType: ShapeType;
+  fillColor: string;
+  strokeColor?: string;
+  strokeWidth?: number;
+  opacity?: number;
+  cornerRadius?: number;
+  shadowColor?: string;
+  shadowBlur?: number;
+}
+
+export type FrameShape = 
+  | 'circle' 
+  | 'squircle' 
+  | 'triangle' 
+  | 'star' 
+  | 'heart' 
+  | 'hexagon' 
+  | 'diamond' 
+  | 'polaroid' 
+  | 'stamp' 
+  | 'phone' 
+  | 'tablet' 
+  | 'laptop' 
+  | 'monitor';
+
+export interface FrameConfig {
+  frameShape: FrameShape;
+  borderWidth?: number;
+  borderColor?: string;
+  borderStyle?: 'solid' | 'dashed' | 'double' | 'gradient';
+  mediaUrl?: string; // Image or video nested inside frame
+  mediaType?: 'image' | 'video';
+  mediaFit?: 'cover' | 'contain';
+}
+
+export type ChartType = 'bar' | 'column' | 'line' | 'pie' | 'doughnut' | 'area' | 'radar';
+
+export interface ChartDataPoint {
+  label: string;
+  value: number;
+  color?: string;
+}
+
+export interface ChartConfig {
+  chartType: ChartType;
+  title?: string;
+  data: ChartDataPoint[];
+  showLegend?: boolean;
+  showValues?: boolean;
+  theme?: 'vibrant' | 'corporate' | 'neon' | 'pastel' | 'monochrome';
+}
+
+export interface SheetConfig {
+  title?: string;
+  headers: string[];
+  rows: (string | number)[][];
+  headerBgColor?: string;
+  headerTextColor?: string;
+  stripeColor?: string;
+  fontSize?: number;
+}
+
+export interface TableConfig {
+  title?: string;
+  headers: string[];
+  rows: (string | number)[][];
+  stylePreset?: 'minimal' | 'striped' | 'bordered' | 'corporate' | 'neon' | 'glass';
+  headerColor?: string;
+  textColor?: string;
+  borderColor?: string;
+}
+
+export interface ElementConfig {
+  type: 'shape' | 'frame' | 'chart' | 'sheet' | 'table';
+  shape?: ShapeConfig;
+  frame?: FrameConfig;
+  chart?: ChartConfig;
+  sheet?: SheetConfig;
+  table?: TableConfig;
+}
 
 export type TransitionType = 
   | 'none' 
@@ -200,6 +307,7 @@ export interface TimelineClip {
   transform?: ClipTransform;
   textContent?: string;
   textEffect?: TextEffectConfig;
+  elementConfig?: ElementConfig;
   audioSettings?: AudioSettings;
   videoSettings?: VideoSettings;
 }

@@ -229,7 +229,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
     }
   };
 
-  const handleCreateNewProject = () => {
+  const handleCreateNewProject = async () => {
     const isPremium = userSession?.isPremium === true || userSession?.role === 'admin';
     if (!isPremium && savedProjects.length >= 3) {
       alertError(
@@ -238,7 +238,70 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
       );
       return;
     }
-    onOpenProject();
+
+    const { value: formValues } = await AppSwal.fire({
+      title: 'สร้างโปรเจกต์ใหม่ (Create New Project)',
+      html: `
+        <div class="space-y-4 text-left font-sans text-xs pt-2">
+          <div>
+            <label class="block font-medium text-slate-700 mb-1">ชื่อโปรเจกต์ (Project Name)</label>
+            <input 
+              id="swal-new-proj-name" 
+              class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500" 
+              value="Project_${Date.now().toString().slice(-4)}"
+            >
+          </div>
+          <div>
+            <label class="block font-medium text-slate-700 mb-1 font-semibold text-slate-800">สัดส่วนภาพ (Aspect Ratio)</label>
+            <select id="swal-new-proj-ratio" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded text-slate-800 font-medium">
+              <option value="16:9" selected>16:9 (แนวนอน / YouTube / TV)</option>
+              <option value="9:16">9:16 (แนวตั้ง / TikTok / Reels)</option>
+              <option value="1:1">1:1 (สี่เหลี่ยมจัตุรัส / Instagram)</option>
+              <option value="4:3">4:3 (คลาสสิก / Retro)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-medium text-slate-700 mb-1">ความละเอียดเรนเดอร์ (Resolution)</label>
+            <select id="swal-new-proj-res" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded text-slate-800">
+              <option value="4K (3840x2160)">4K Ultra HD (3840x2160)</option>
+              <option value="2K (2560x1440)" selected>2K Quad HD (2560x1440)</option>
+              <option value="1080p (1920x1080)">1080p Full HD (1920x1080)</option>
+              <option value="720p (1280x720)">720p HD (1280x720)</option>
+            </select>
+          </div>
+        </div>
+      `,
+      showCancelButton: true,
+      confirmButtonText: 'เริ่มสร้างโปรเจกต์',
+      cancelButtonText: 'ยกเลิก',
+      preConfirm: () => {
+        const name = (document.getElementById('swal-new-proj-name') as HTMLInputElement).value;
+        const aspectRatio = (document.getElementById('swal-new-proj-ratio') as HTMLSelectElement).value as any;
+        const resolution = (document.getElementById('swal-new-proj-res') as HTMLSelectElement).value as any;
+
+        if (!name.trim()) {
+          AppSwal.showValidationMessage('กรุณาระบุชื่อโปรเจกต์');
+          return false;
+        }
+
+        return { name: name.trim(), aspectRatio, resolution };
+      }
+    });
+
+    if (formValues) {
+      const newP: SavedProject = {
+        id: `proj-${Date.now()}`,
+        name: formValues.name,
+        aspectRatio: formValues.aspectRatio,
+        resolution: formValues.resolution,
+        fps: 30,
+        totalDuration: 30,
+        clipCount: 0,
+        updatedAt: Date.now(),
+        createdAt: Date.now(),
+      };
+      onOpenProject(newP);
+    }
   };
 
   const handleImportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {

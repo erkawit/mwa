@@ -16,7 +16,12 @@ import {
   Play,
   RotateCw,
   Zap,
-  Upload
+  Upload,
+  Shapes,
+  Crop,
+  BarChart3,
+  FileSpreadsheet,
+  Table
 } from 'lucide-react';
 import type { 
   MediaAsset, 
@@ -27,7 +32,11 @@ import type {
   TimelineClip, 
   TextEffectConfig, 
   TransitionType, 
-  MotionAnimation 
+  MotionAnimation,
+  ElementConfig,
+  ShapeType,
+  FrameShape,
+  ChartType
 } from '../types';
 import { AppSwal, alertConfirm, alertError, alertSuccess } from '../utils/swal';
 import { googleDriveService } from '../services/googleDrive';
@@ -56,6 +65,7 @@ interface AssetSidebarProps {
   onRemoveUploadTask: (taskId: string) => void;
   onRelinkAsset?: (asset: MediaAsset) => void;
   onAddTextClip?: (preset?: { name?: string; content?: string; effect?: Partial<TextEffectConfig> }) => void;
+  onAddElementClip?: (elementConfig: ElementConfig, name: string) => void;
   onAddCustomFont?: (font: CustomFont) => void;
   onUpdateClipEffect?: (clipId: string, text: string, effect: TextEffectConfig) => void;
   onUpdateClipTransition?: (clipId: string, transition: TransitionType) => void;
@@ -88,13 +98,16 @@ export const AssetSidebar: React.FC<AssetSidebarProps> = ({
   onRemoveUploadTask,
   onRelinkAsset: _onRelinkAsset = () => {},
   onAddTextClip = () => {},
+  onAddElementClip = () => {},
   onAddCustomFont = () => {},
   onUpdateClipEffect = () => {},
   onUpdateClipTransition = () => {},
   onUpdateClipMotion = () => {},
 }) => {
-  // Navigation Dock Tab State: 'media' | 'font' | 'animation'
-  const [activeTab, setActiveTab] = useState<'media' | 'font' | 'animation'>('media');
+  // Navigation Dock Tab State: 'media' | 'element' | 'font' | 'animation'
+  const [activeTab, setActiveTab] = useState<'media' | 'element' | 'font' | 'animation'>('media');
+  const [elementSubTab, setElementSubTab] = useState<'shape' | 'frame' | 'chart' | 'sheet' | 'table'>('shape');
+  const [selectedShapeColor, setSelectedShapeColor] = useState('#3B82F6');
 
   // Media Tab States
   const [filter, setFilter] = useState<'all' | 'video' | 'audio' | 'image'>('all');
@@ -382,6 +395,23 @@ export const AssetSidebar: React.FC<AssetSidebarProps> = ({
           <span className="text-[11px] font-sans tracking-tight">คลังสื่อ</span>
         </button>
 
+        {/* Element Tab Button (Shape, Frame, Charts, Sheets, Tables) */}
+        <button
+          onClick={() => setActiveTab('element')}
+          title="องค์ประกอบ (Shape, Frame, Charts, Sheets, Tables)"
+          className={`w-full py-3 px-1 flex flex-col items-center gap-1 transition relative group mt-1 ${
+            activeTab === 'element'
+              ? 'text-white bg-slate-800/80 font-medium'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+          }`}
+        >
+          {activeTab === 'element' && (
+            <div className="absolute left-0 top-1 bottom-1 w-1 bg-emerald-500 rounded-r"></div>
+          )}
+          <Shapes className={`w-5 h-5 ${activeTab === 'element' ? 'text-emerald-400' : 'text-slate-400 group-hover:text-slate-200'}`} />
+          <span className="text-[11px] font-sans tracking-tight">องค์ประกอบ</span>
+        </button>
+
         {/* Font Tab Button */}
         <button
           onClick={() => setActiveTab('font')}
@@ -586,7 +616,322 @@ export const AssetSidebar: React.FC<AssetSidebarProps> = ({
         )}
 
         {/* =========================================================
-            TAB 2: FONT & TEXT STUDIO (แบบอักษร)
+            TAB 2: ELEMENT STUDIO (องค์ประกอบ: Shape, Frame, Charts, Sheets, Tables)
+            ========================================================= */}
+        {activeTab === 'element' && (
+          <div className="flex-1 flex flex-col min-h-0 overflow-y-auto p-3 space-y-3 font-sans">
+            {/* Title & Sub-tabs */}
+            <div className="border-b border-app-border pb-2">
+              <span className="text-xs font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                <Shapes className="w-4 h-4 text-emerald-600" />
+                <span>องค์ประกอบ & รูปทรง (Elements)</span>
+              </span>
+              <p className="text-[11px] text-slate-500 font-doc mt-0.5">
+                รูปทรงเรขาคณิต, เฟรมตัดขอบ, แผนภูมิ, ชีต และตารางข้อมูล
+              </p>
+
+              {/* Sub-tab Pill Navigation */}
+              <div className="grid grid-cols-5 gap-1 mt-2.5 bg-slate-100 p-0.5 rounded border border-slate-200 text-[10px] font-medium text-center">
+                <button
+                  onClick={() => setElementSubTab('shape')}
+                  className={`py-1 rounded transition ${elementSubTab === 'shape' ? 'bg-white text-emerald-700 font-bold shadow-2xs' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                  Shape
+                </button>
+                <button
+                  onClick={() => setElementSubTab('frame')}
+                  className={`py-1 rounded transition ${elementSubTab === 'frame' ? 'bg-white text-emerald-700 font-bold shadow-2xs' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                  Frame
+                </button>
+                <button
+                  onClick={() => setElementSubTab('chart')}
+                  className={`py-1 rounded transition ${elementSubTab === 'chart' ? 'bg-white text-emerald-700 font-bold shadow-2xs' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                  Charts
+                </button>
+                <button
+                  onClick={() => setElementSubTab('sheet')}
+                  className={`py-1 rounded transition ${elementSubTab === 'sheet' ? 'bg-white text-emerald-700 font-bold shadow-2xs' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                  Sheets
+                </button>
+                <button
+                  onClick={() => setElementSubTab('table')}
+                  className={`py-1 rounded transition ${elementSubTab === 'table' ? 'bg-white text-emerald-700 font-bold shadow-2xs' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                  Tables
+                </button>
+              </div>
+            </div>
+
+            {/* 1. SHAPE SUB-TAB */}
+            {elementSubTab === 'shape' && (
+              <div className="space-y-3">
+                {/* Shape Color Palette Picker */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider flex items-center justify-between">
+                    <span>🎨 เลือกสีรูปทรง (Color)</span>
+                    <span className="font-mono text-[10px] text-slate-400">{selectedShapeColor}</span>
+                  </label>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#0F172A', '#64748B', '#FFFFFF'].map((color) => (
+                      <button
+                        key={color}
+                        onClick={() => setSelectedShapeColor(color)}
+                        style={{ backgroundColor: color }}
+                        className={`w-5 h-5 rounded-full border border-slate-300 transition hover:scale-110 shadow-2xs ${selectedShapeColor === color ? 'ring-2 ring-blue-500 scale-110' : ''}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Grid of 22 Shapes */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider">
+                    📐 เลือกรูปทรงเรขาคณิต (Geometric Shapes)
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: 'rectangle', name: 'สี่เหลี่ยมผืนผ้า', icon: '■' },
+                      { id: 'rounded-rect', name: 'สี่เหลี่ยมมน', icon: '▢' },
+                      { id: 'circle', name: 'วงกลม', icon: '●' },
+                      { id: 'ellipse', name: 'วงรี', icon: '⬭' },
+                      { id: 'triangle', name: 'สามเหลี่ยม', icon: '▲' },
+                      { id: 'triangle-right', name: 'สามเหลี่ยมมุมฉาก', icon: '◣' },
+                      { id: 'star-5', name: 'ดาว 5 แฉก', icon: '★' },
+                      { id: 'star-6', name: 'ดาว 6 แฉก', icon: '✡' },
+                      { id: 'heart', name: 'หัวใจ', icon: '♥' },
+                      { id: 'diamond', name: 'ข้าวหลามตัด', icon: '◆' },
+                      { id: 'pentagon', name: 'ห้าเหลี่ยม', icon: '⬟' },
+                      { id: 'hexagon', name: 'หกเหลี่ยม', icon: '⬢' },
+                      { id: 'octagon', name: 'แปดเหลี่ยม', icon: '🛑' },
+                      { id: 'arrow-right', name: 'ลูกศรขวา', icon: '➔' },
+                      { id: 'arrow-left', name: 'ลูกศรซ้าย', icon: '⬅' },
+                      { id: 'arrow-up', name: 'ลูกศรชี้ขึ้น', icon: '⬆' },
+                      { id: 'arrow-down', name: 'ลูกศรชี้ลง', icon: '⬇' },
+                      { id: 'speech-bubble', name: 'กล่องคำพูด', icon: '💬' },
+                      { id: 'cross', name: 'เครื่องหมายบวก', icon: '✚' },
+                      { id: 'badge', name: 'ตราสัญลักษณ์', icon: '🏵️' },
+                      { id: 'ring', name: 'วงแหวนกลวง', icon: '◎' },
+                      { id: 'trapezoid', name: 'สี่เหลี่ยมคางหมู', icon: '⏢' },
+                      { id: 'parallelogram', name: 'สี่เหลี่ยมด้านขนาน', icon: '▰' },
+                    ].map((shape) => (
+                      <button
+                        key={shape.id}
+                        onClick={() => onAddElementClip({
+                          type: 'shape',
+                          shape: {
+                            shapeType: shape.id as ShapeType,
+                            fillColor: selectedShapeColor,
+                            strokeColor: '#0F172A',
+                            strokeWidth: 0,
+                            opacity: 1,
+                            cornerRadius: shape.id === 'rounded-rect' ? 16 : 0,
+                          }
+                        }, shape.name)}
+                        className="p-2.5 bg-white hover:bg-emerald-50/70 border border-slate-200 hover:border-emerald-400 rounded flex flex-col items-center justify-center gap-1 transition shadow-2xs group text-slate-700 hover:text-emerald-700"
+                        title={`คลิกเพื่อแทรก ${shape.name}`}
+                      >
+                        <span className="text-xl group-hover:scale-110 transition-transform">{shape.icon}</span>
+                        <span className="text-[10px] font-sans truncate w-full text-center">{shape.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 2. FRAME SUB-TAB */}
+            {elementSubTab === 'frame' && (
+              <div className="space-y-3">
+                <div className="p-2 bg-emerald-50/70 border border-emerald-200 rounded text-[11px] text-emerald-900 font-doc">
+                  💡 <strong>เฟรมรูปภาพ:</strong> เมื่อแทรกเฟรมลงในวิดีโอ สามารถลากไฟล์ภาพหรือวิดีโอมาใส่เพื่อตัดขอบตามรูปทรงได้ทันที
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: 'circle', name: 'เฟรมวงกลม', shape: 'circle', desc: 'ตัดภาพเป็นวงกลม' },
+                    { id: 'squircle', name: 'เฟรมสี่เหลี่ยมมน', shape: 'squircle', desc: 'ขอบมนนุ่มนวล' },
+                    { id: 'triangle', name: 'เฟรมสามเหลี่ยม', shape: 'triangle', desc: 'ตัดภาพสามเหลี่ยม' },
+                    { id: 'star', name: 'เฟรมรูปดาว', shape: 'star', desc: 'ตัดภาพทรงดาว' },
+                    { id: 'heart', name: 'เฟรมหัวใจ', shape: 'heart', desc: 'ตัดภาพรูปหัวใจ' },
+                    { id: 'hexagon', name: 'เฟรมหกเหลี่ยม', shape: 'hexagon', desc: 'ตัดภาพหกเหลี่ยม' },
+                    { id: 'diamond', name: 'เฟรมข้าวหลามตัด', shape: 'diamond', desc: 'ตัดภาพเพชร' },
+                    { id: 'polaroid', name: 'เฟรมโพลารอยด์', shape: 'polaroid', desc: 'การ์ดรูปภาพคลาสสิก' },
+                    { id: 'stamp', name: 'เฟรมแสตมป์', shape: 'stamp', desc: 'ขอบแสตมป์หยัก' },
+                    { id: 'phone', name: 'Mockup สมาร์ทโฟน', shape: 'phone', desc: 'กรอบมือถือแนวตั้ง' },
+                    { id: 'tablet', name: 'Mockup แท็บเล็ต', shape: 'tablet', desc: 'กรอบแท็บเล็ต' },
+                    { id: 'laptop', name: 'Mockup แล็ปท็อป', shape: 'laptop', desc: 'กรอบคอมพิวเตอร์' },
+                  ].map((frame) => (
+                    <button
+                      key={frame.id}
+                      onClick={() => onAddElementClip({
+                        type: 'frame',
+                        frame: {
+                          frameShape: frame.shape as FrameShape,
+                          borderWidth: 2,
+                          borderColor: '#06B6D4',
+                        }
+                      }, frame.name)}
+                      className="p-3 bg-white hover:bg-emerald-50/70 border border-slate-200 hover:border-emerald-400 rounded flex flex-col items-center gap-1.5 transition shadow-2xs group text-left"
+                    >
+                      <div className="w-10 h-10 rounded bg-slate-100 border border-slate-300 flex items-center justify-center text-slate-500 group-hover:text-emerald-600 group-hover:scale-105 transition">
+                        <Crop className="w-5 h-5" />
+                      </div>
+                      <div className="text-center w-full">
+                        <div className="text-xs font-semibold text-slate-800">{frame.name}</div>
+                        <div className="text-[10px] text-slate-400 font-doc">{frame.desc}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 3. CHARTS SUB-TAB */}
+            {elementSubTab === 'chart' && (
+              <div className="space-y-3">
+                <div className="p-2 bg-blue-50/70 border border-blue-200 rounded text-[11px] text-blue-900 font-doc">
+                  📊 <strong>แผนภูมิ & กราฟ:</strong> แสดงผลกราฟสด ปรับเปลี่ยนข้อมูลตัวเลขและป้ายกำกับได้ตามต้องการ
+                </div>
+
+                <div className="space-y-2">
+                  {[
+                    { id: 'bar', name: '📊 แผนภูมิแท่ง (Bar Chart)', data: [{ label: 'Q1', value: 45 }, { label: 'Q2', value: 78 }, { label: 'Q3', value: 60 }, { label: 'Q4', value: 92 }] },
+                    { id: 'column', name: '📈 แผนภูมิคอลัมน์ (Column Chart)', data: [{ label: 'จ.', value: 20 }, { label: 'อ.', value: 45 }, { label: 'พ.', value: 35 }, { label: 'พฤ.', value: 65 }, { label: 'ศ.', value: 85 }] },
+                    { id: 'line', name: '📉 กราฟแนวโน้ม (Line Trend)', data: [{ label: '2021', value: 30 }, { label: '2022', value: 55 }, { label: '2023', value: 70 }, { label: '2024', value: 95 }] },
+                    { id: 'pie', name: '🥧 แผนภูมิวงกลม (Pie / Distribution)', data: [{ label: 'สินค้า A', value: 40 }, { label: 'สินค้า B', value: 35 }, { label: 'สินค้า C', value: 25 }] },
+                  ].map((chart) => (
+                    <button
+                      key={chart.id}
+                      onClick={() => onAddElementClip({
+                        type: 'chart',
+                        chart: {
+                          chartType: chart.id as ChartType,
+                          title: chart.name.split(' ')[1],
+                          data: chart.data,
+                          showLegend: true,
+                          showValues: true,
+                        }
+                      }, chart.name)}
+                      className="w-full p-2.5 bg-white hover:bg-blue-50/70 border border-slate-200 hover:border-blue-400 rounded text-left transition shadow-2xs flex items-center justify-between group"
+                    >
+                      <div className="flex items-center gap-2">
+                        <BarChart3 className="w-4 h-4 text-blue-600 group-hover:scale-110 transition-transform" />
+                        <span className="text-xs font-semibold text-slate-800">{chart.name}</span>
+                      </div>
+                      <span className="text-[10px] text-blue-600 font-medium">+ แทรก</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 4. SHEETS SUB-TAB */}
+            {elementSubTab === 'sheet' && (
+              <div className="space-y-3">
+                <div className="p-2 bg-emerald-50/70 border border-emerald-200 rounded text-[11px] text-emerald-900 font-doc">
+                  📑 <strong>ชีตตารางคำนวณ:</strong> แสดงผลชีตที่มีหัวตารางและแถวข้อมูล สามารถแก้ไขตัวเลขและรายละเอียดได้
+                </div>
+
+                <div className="space-y-2">
+                  {[
+                    {
+                      name: '💰 ชีตสรุปรายรับ-รายจ่าย',
+                      headers: ['ลำดับ', 'รายการ', 'รายรับ', 'รายจ่าย'],
+                      rows: [['1', 'ยอดขายหน้าร้าน', '15,000', '-'], ['2', 'ค่าธรรมเนียม', '-', '1,200'], ['3', 'ยอดขายออนไลน์', '28,000', '-']]
+                    },
+                    {
+                      name: '📋 ชีตติดตามงานโปรเจกต์ (Task Sheet)',
+                      headers: ['ภารกิจ', 'ผู้รับผิดชอบ', 'กำหนดส่ง', 'สถานะ'],
+                      rows: [['ตัดต่อวิดีโอ', 'สมชาย', '25 ส.ค.', 'กำลังทำ'], ['ตรวจเสียง', 'วิภา', '26 ส.ค.', 'รอตรวจ'], ['เรนเดอร์ 4K', 'แอดมิน', '28 ส.ค.', 'ยังไม่เริ่ม']]
+                    },
+                    {
+                      name: '📦 ชีตคลังสินค้า (Inventory)',
+                      headers: ['รหัส', 'ชื่อสินค้า', 'คงเหลือ', 'ราคาต่อหน่วย'],
+                      rows: [['A01', 'กล้อง Cinema 4K', '5', '85,000'], ['A02', 'ไมโครโฟนไร้สาย', '12', '14,500'], ['A03', 'ขาตั้งกล้องคาร์บอน', '8', '6,900']]
+                    },
+                  ].map((sheet, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => onAddElementClip({
+                        type: 'sheet',
+                        sheet: {
+                          title: sheet.name,
+                          headers: sheet.headers,
+                          rows: sheet.rows,
+                        }
+                      }, sheet.name)}
+                      className="w-full p-2.5 bg-white hover:bg-emerald-50/70 border border-slate-200 hover:border-emerald-400 rounded text-left transition shadow-2xs flex items-center justify-between group"
+                    >
+                      <div className="flex items-center gap-2">
+                        <FileSpreadsheet className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform" />
+                        <span className="text-xs font-semibold text-slate-800">{sheet.name}</span>
+                      </div>
+                      <span className="text-[10px] text-emerald-600 font-medium">+ แทรก</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 5. TABLES SUB-TAB */}
+            {elementSubTab === 'table' && (
+              <div className="space-y-3">
+                <div className="p-2 bg-purple-50/70 border border-purple-200 rounded text-[11px] text-purple-900 font-doc">
+                  🗂️ <strong>ตารางข้อมูล:</strong> ตารางสไตล์โมเดิร์นหลายรูปแบบสำหรับแสดงข้อมูลเปรียบเทียบ
+                </div>
+
+                <div className="space-y-2">
+                  {[
+                    {
+                      name: '✨ ตาราง Minimal Clean',
+                      style: 'minimal',
+                      headers: ['คุณสมบัติ', 'Normal User', 'Premium User'],
+                      rows: [['ขนาดไฟล์อัปโหลด', '1 GB', '4 GB'], ['จำนวนโปรเจกต์', '3 โปรเจกต์', 'ไม่จำกัด'], ['จำนวนแทร็ก', '3 แทร็ก', '10 แทร็ก'], ['ลายน้ำ MWA', 'มีลายน้ำ', 'ไม่มีลายน้ำ']]
+                    },
+                    {
+                      name: '🏢 ตาราง Corporate Blue',
+                      style: 'corporate',
+                      headers: ['แผนก', 'เป้าหมาย (ล้าน)', 'ทำได้จริง (ล้าน)', 'ผลงาน'],
+                      rows: [['การตลาด', '5.0', '5.8', '116%'], ['ฝ่ายขาย', '12.0', '13.2', '110%'], ['บริการลูกค้า', '2.0', '2.1', '105%']]
+                    },
+                    {
+                      name: '⚡ ตาราง Neon Cyberpunk',
+                      style: 'neon',
+                      headers: ['Node', 'Latency', 'Uptime', 'Security'],
+                      rows: [['BKK-01', '2ms', '99.99%', 'SECURE'], ['SGP-02', '18ms', '99.95%', 'SECURE'], ['TYO-03', '45ms', '100%', 'SECURE']]
+                    },
+                  ].map((tbl, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => onAddElementClip({
+                        type: 'table',
+                        table: {
+                          title: tbl.name,
+                          stylePreset: tbl.style as any,
+                          headers: tbl.headers,
+                          rows: tbl.rows,
+                        }
+                      }, tbl.name)}
+                      className="w-full p-2.5 bg-white hover:bg-purple-50/70 border border-slate-200 hover:border-purple-400 rounded text-left transition shadow-2xs flex items-center justify-between group"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Table className="w-4 h-4 text-purple-600 group-hover:scale-110 transition-transform" />
+                        <span className="text-xs font-semibold text-slate-800">{tbl.name}</span>
+                      </div>
+                      <span className="text-[10px] text-purple-600 font-medium">+ แทรก</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* =========================================================
+            TAB 3: FONT & TEXT STUDIO (แบบอักษร)
             ========================================================= */}
         {activeTab === 'font' && (
           <div className="flex-1 flex flex-col min-h-0 overflow-y-auto p-3 space-y-4 font-sans">

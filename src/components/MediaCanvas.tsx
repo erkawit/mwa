@@ -23,6 +23,7 @@ interface MediaCanvasProps {
   activeAsset: MediaAsset | null;
   activeTextClips: TimelineClip[];
   activeVideoClips?: TimelineClip[];
+  activeElementClips?: TimelineClip[];
   selectedClipId: string | null;
   projectSettings: ProjectSettings;
   isPremium?: boolean;
@@ -41,6 +42,7 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
   activeAsset,
   activeTextClips,
   activeVideoClips = [],
+  activeElementClips = [],
   selectedClipId,
   projectSettings,
   isPremium = false,
@@ -286,31 +288,98 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
     const rect = container.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2 + initialTransform.x;
     const centerY = rect.top + rect.height / 2 + initialTransform.y;
-    const initialDist = Math.max(30, Math.hypot(startX - centerX, startY - centerY));
+    
+    // Canvas viewport dimensions
+    const viewportWidth = rect.width;
+    const viewportHeight = rect.height;
+    const canvasCenterX = rect.left + rect.width / 2;
+    const canvasCenterY = rect.top + rect.height / 2;
+
+    // Requirement 2: Anchor calculation (Lock opposite corner in place during scaling)
+    const hw0 = (viewportWidth * initialTransform.scale) / 2;
+    const hh0 = (viewportHeight * initialTransform.scale) / 2;
+
+    let anchorX = centerX;
+    let anchorY = centerY;
+
+    if (handleType === 'nw') {
+      anchorX = centerX + hw0;
+      anchorY = centerY + hh0;
+    } else if (handleType === 'ne') {
+      anchorX = centerX - hw0;
+      anchorY = centerY + hh0;
+    } else if (handleType === 'se') {
+      anchorX = centerX - hw0;
+      anchorY = centerY - hh0;
+    } else if (handleType === 'sw') {
+      anchorX = centerX + hw0;
+      anchorY = centerY - hh0;
+    } else if (handleType === 'n') {
+      anchorX = centerX;
+      anchorY = centerY + hh0;
+    } else if (handleType === 's') {
+      anchorX = centerX;
+      anchorY = centerY - hh0;
+    } else if (handleType === 'w') {
+      anchorX = centerX + hw0;
+      anchorY = centerY;
+    } else if (handleType === 'e') {
+      anchorX = centerX - hw0;
+      anchorY = centerY;
+    }
+
+    const initialV0Dist = Math.max(30, Math.hypot(startX - anchorX, startY - anchorY));
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       moveEvent.preventDefault();
       if (handleType === 'move') {
         const deltaX = moveEvent.clientX - startX;
         const deltaY = moveEvent.clientY - startY;
+
+        let rawX = initialTransform.x + deltaX;
+        let rawY = initialTransform.y + deltaY;
+
+        // Requirement 1: Canvas Boundary Locking on Move / Drag
+        // Prevents moving media outside visible canvas boundaries
+        const limitX = Math.max(20, (viewportWidth * 0.45));
+        const limitY = Math.max(20, (viewportHeight * 0.45));
+
+        const clampedX = Math.max(-limitX, Math.min(limitX, rawX));
+        const clampedY = Math.max(-limitY, Math.min(limitY, rawY));
+
         const newTransform: ClipTransform = {
           ...initialTransform,
-          x: Math.round(initialTransform.x + deltaX),
-          y: Math.round(initialTransform.y + deltaY),
+          x: Math.round(clampedX),
+          y: Math.round(clampedY),
         };
         if (onUpdateClipTransform) {
           onUpdateClipTransform(clip.id, newTransform);
         }
       } else {
-        // Symmetrical Scaling: calculate distance relative to center
-        const currentDist = Math.hypot(moveEvent.clientX - centerX, moveEvent.clientY - centerY);
-        const scaleMultiplier = currentDist / initialDist;
-        let newScale = parseFloat((initialTransform.scale * scaleMultiplier).toFixed(2));
+        // Requirement 2: Anchor-Locked Scaling (Scale only the active handle, locking opposite point)
+        const currentV = Math.hypot(moveEvent.clientX - anchorX, moveEvent.clientY - anchorY);
+        const scaleFactor = Math.max(0.1, currentV / initialV0Dist);
+
+        let newScale = parseFloat((initialTransform.scale * scaleFactor).toFixed(2));
         newScale = Math.max(0.15, Math.min(4.0, newScale));
 
+        // Calculate new center so the opposite anchor point remains stationary on the canvas
+        let newCenterX = (anchorX + moveEvent.clientX) / 2;
+        let newCenterY = (anchorY + moveEvent.clientY) / 2;
+
+        if (handleType === 'n' || handleType === 's') {
+          newCenterX = anchorX;
+        } else if (handleType === 'e' || handleType === 'w') {
+          newCenterY = anchorY;
+        }
+
+        const newX = Math.round(newCenterX - canvasCenterX);
+        const newY = Math.round(newCenterY - canvasCenterY);
+
         const newTransform: ClipTransform = {
-          ...initialTransform,
           scale: newScale,
+          x: newX,
+          y: newY,
         };
         if (onUpdateClipTransform) {
           onUpdateClipTransform(clip.id, newTransform);
@@ -328,6 +397,173 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
   };
 
   const primaryVideoAnim = getClipTimeBasedAnimation(activePrimaryVideoClip, currentTime);
+
+  const renderElementContent = (clip: TimelineClip) => {
+    const cfg = clip.elementConfig;
+    if (!cfg) return null;
+
+    if (cfg.type === 'shape' && cfg.shape) {
+      const s = cfg.shape;
+      return (
+        <svg className="w-full h-full drop-shadow-md" viewBox="0 0 100 100" preserveAspectRatio="none">
+          {s.shapeType === 'rectangle' && (
+            <rect x="5" y="5" width="90" height="90" rx={s.cornerRadius || 0} fill={s.fillColor} stroke={s.strokeColor} strokeWidth={s.strokeWidth || 0} opacity={s.opacity || 1} />
+          )}
+          {s.shapeType === 'rounded-rect' && (
+            <rect x="5" y="5" width="90" height="90" rx={s.cornerRadius || 16} fill={s.fillColor} stroke={s.strokeColor} strokeWidth={s.strokeWidth || 0} opacity={s.opacity || 1} />
+          )}
+          {s.shapeType === 'circle' && (
+            <circle cx="50" cy="50" r="45" fill={s.fillColor} stroke={s.strokeColor} strokeWidth={s.strokeWidth || 0} opacity={s.opacity || 1} />
+          )}
+          {s.shapeType === 'ellipse' && (
+            <ellipse cx="50" cy="50" rx="45" ry="30" fill={s.fillColor} stroke={s.strokeColor} strokeWidth={s.strokeWidth || 0} opacity={s.opacity || 1} />
+          )}
+          {s.shapeType === 'triangle' && (
+            <polygon points="50,5 95,95 5,95" fill={s.fillColor} stroke={s.strokeColor} strokeWidth={s.strokeWidth || 0} opacity={s.opacity || 1} />
+          )}
+          {s.shapeType === 'triangle-right' && (
+            <polygon points="5,5 95,50 5,95" fill={s.fillColor} stroke={s.strokeColor} strokeWidth={s.strokeWidth || 0} opacity={s.opacity || 1} />
+          )}
+          {s.shapeType === 'star-5' && (
+            <polygon points="50,5 64,36 98,36 70,57 81,91 50,70 19,91 30,57 2,36 36,36" fill={s.fillColor} stroke={s.strokeColor} strokeWidth={s.strokeWidth || 0} opacity={s.opacity || 1} />
+          )}
+          {s.shapeType === 'star-6' && (
+            <polygon points="50,2 62,28 92,20 74,45 92,70 62,62 50,88 38,62 8,70 26,45 8,20 38,28" fill={s.fillColor} stroke={s.strokeColor} strokeWidth={s.strokeWidth || 0} opacity={s.opacity || 1} />
+          )}
+          {s.shapeType === 'heart' && (
+            <path d="M50 88 C20 60 5 40 5 25 A 20 20 0 0 1 45 15 L 50 20 L 55 15 A 20 20 0 0 1 95 25 C 95 40 80 60 50 88 Z" fill={s.fillColor} stroke={s.strokeColor} strokeWidth={s.strokeWidth || 0} opacity={s.opacity || 1} />
+          )}
+          {s.shapeType === 'diamond' && (
+            <polygon points="50,5 95,50 50,95 5,50" fill={s.fillColor} stroke={s.strokeColor} strokeWidth={s.strokeWidth || 0} opacity={s.opacity || 1} />
+          )}
+          {s.shapeType === 'pentagon' && (
+            <polygon points="50,5 95,38 78,95 22,95 5,38" fill={s.fillColor} stroke={s.strokeColor} strokeWidth={s.strokeWidth || 0} opacity={s.opacity || 1} />
+          )}
+          {s.shapeType === 'hexagon' && (
+            <polygon points="25,5 75,5 95,50 75,95 25,95 5,50" fill={s.fillColor} stroke={s.strokeColor} strokeWidth={s.strokeWidth || 0} opacity={s.opacity || 1} />
+          )}
+          {s.shapeType === 'octagon' && (
+            <polygon points="30,5 70,5 95,30 95,70 70,95 30,95 5,70 5,30" fill={s.fillColor} stroke={s.strokeColor} strokeWidth={s.strokeWidth || 0} opacity={s.opacity || 1} />
+          )}
+          {s.shapeType === 'arrow-right' && (
+            <polygon points="5,35 60,35 60,15 95,50 60,85 60,65 5,65" fill={s.fillColor} stroke={s.strokeColor} strokeWidth={s.strokeWidth || 0} opacity={s.opacity || 1} />
+          )}
+          {s.shapeType === 'arrow-left' && (
+            <polygon points="95,35 40,35 40,15 5,50 40,85 40,65 95,65" fill={s.fillColor} stroke={s.strokeColor} strokeWidth={s.strokeWidth || 0} opacity={s.opacity || 1} />
+          )}
+          {s.shapeType === 'arrow-up' && (
+            <polygon points="35,95 35,40 15,40 50,5 85,40 65,40 65,95" fill={s.fillColor} stroke={s.strokeColor} strokeWidth={s.strokeWidth || 0} opacity={s.opacity || 1} />
+          )}
+          {s.shapeType === 'arrow-down' && (
+            <polygon points="35,5 35,60 15,60 50,95 85,60 65,60 65,5" fill={s.fillColor} stroke={s.strokeColor} strokeWidth={s.strokeWidth || 0} opacity={s.opacity || 1} />
+          )}
+          {s.shapeType === 'speech-bubble' && (
+            <path d="M10,15 Q10,10 15,10 L85,10 Q90,10 90,15 L90,65 Q90,70 85,70 L35,70 L20,88 L25,70 L15,70 Q10,70 10,65 Z" fill={s.fillColor} stroke={s.strokeColor} strokeWidth={s.strokeWidth || 0} opacity={s.opacity || 1} />
+          )}
+          {s.shapeType === 'cross' && (
+            <polygon points="35,5 65,5 65,35 95,35 95,65 65,65 65,95 35,95 35,65 5,65 5,35 35,35" fill={s.fillColor} stroke={s.strokeColor} strokeWidth={s.strokeWidth || 0} opacity={s.opacity || 1} />
+          )}
+          {s.shapeType === 'ring' && (
+            <path d="M50 5 A45 45 0 1 0 50 95 A45 45 0 1 0 50 5 M50 25 A25 25 0 1 1 50 75 A25 25 0 1 1 50 25" fill={s.fillColor} opacity={s.opacity || 1} fillRule="evenodd" />
+          )}
+          {s.shapeType === 'trapezoid' && (
+            <polygon points="20,10 80,10 95,90 5,90" fill={s.fillColor} stroke={s.strokeColor} strokeWidth={s.strokeWidth || 0} opacity={s.opacity || 1} />
+          )}
+          {s.shapeType === 'parallelogram' && (
+            <polygon points="25,10 95,10 75,90 5,90" fill={s.fillColor} stroke={s.strokeColor} strokeWidth={s.strokeWidth || 0} opacity={s.opacity || 1} />
+          )}
+        </svg>
+      );
+    }
+
+    if (cfg.type === 'frame' && cfg.frame) {
+      const f = cfg.frame;
+      const getMaskStyle = (): React.CSSProperties => {
+        if (f.frameShape === 'circle') return { borderRadius: '50%', overflow: 'hidden' };
+        if (f.frameShape === 'squircle') return { borderRadius: '24%', overflow: 'hidden' };
+        if (f.frameShape === 'triangle') return { clipPath: 'polygon(50% 5%, 95% 95%, 5% 95%)' };
+        if (f.frameShape === 'star') return { clipPath: 'polygon(50% 5%, 64% 36%, 98% 36%, 70% 57%, 81% 91%, 50% 70%, 19% 91%, 30% 57%, 2% 36%, 36% 36%)' };
+        if (f.frameShape === 'heart') return { clipPath: 'path("M 50,85 C 20,55 5,35 5,20 A 20,20 0 0 1 45,15 L 50,20 L 55,15 A 20,20 0 0 1 95,20 C 95,35 80,55 50,85 Z")' };
+        if (f.frameShape === 'hexagon') return { clipPath: 'polygon(25% 5%, 75% 5%, 95% 50%, 75% 95%, 25% 95%, 5% 50%)' };
+        if (f.frameShape === 'diamond') return { clipPath: 'polygon(50% 5%, 95% 50%, 50% 95%, 5% 50%)' };
+        return { borderRadius: '8px', overflow: 'hidden' };
+      };
+
+      return (
+        <div style={getMaskStyle()} className="w-full h-full bg-slate-800 border-2 border-cyan-400/40 relative flex items-center justify-center shadow-lg">
+          {f.mediaUrl ? (
+            <img src={f.mediaUrl} alt="Frame Media" className="w-full h-full object-cover" />
+          ) : (
+            <div className="text-center p-3 text-cyan-300 space-y-1">
+              <Sparkles className="w-6 h-6 mx-auto animate-pulse" />
+              <span className="text-[10px] block font-sans">ลากรูปภาพมาวางในเฟรม</span>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (cfg.type === 'chart' && cfg.chart) {
+      const c = cfg.chart;
+      const maxVal = Math.max(...c.data.map(d => d.value), 1);
+      const colors = ['#3B82F6', '#10B981', '#F59E0B', '#EC4899', '#8B5CF6', '#06B6D4'];
+
+      return (
+        <div className="w-full h-full bg-slate-900/95 border border-slate-700 rounded-md p-3 text-white flex flex-col justify-between shadow-2xl backdrop-blur-md">
+          {c.title && <div className="text-xs font-bold text-slate-200 border-b border-slate-700 pb-1">{c.title}</div>}
+          
+          <div className="flex-1 flex items-end justify-around gap-2 py-2 min-h-0">
+            {c.data.map((dp, i) => {
+              const hPct = Math.round((dp.value / maxVal) * 80);
+              const color = dp.color || colors[i % colors.length];
+              return (
+                <div key={i} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
+                  <span className="text-[9px] font-mono text-slate-300">{dp.value}</span>
+                  <div 
+                    style={{ height: `${hPct}%`, backgroundColor: color }} 
+                    className="w-full max-w-[28px] rounded-t-xs transition-all shadow-sm"
+                  />
+                  <span className="text-[8px] font-sans text-slate-400 truncate w-full text-center">{dp.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    if ((cfg.type === 'sheet' && cfg.sheet) || (cfg.type === 'table' && cfg.table)) {
+      const t = cfg.sheet || cfg.table;
+      if (!t) return null;
+      return (
+        <div className="w-full h-full bg-slate-900/95 border border-slate-700 rounded-md overflow-hidden text-xs shadow-2xl backdrop-blur-md flex flex-col">
+          {t.title && <div className="bg-slate-800 px-3 py-1 font-bold text-slate-200 text-[11px] border-b border-slate-700">{t.title}</div>}
+          <div className="overflow-x-auto flex-1 p-1">
+            <table className="w-full text-left border-collapse text-[10px]">
+              <thead>
+                <tr className="bg-blue-900/40 text-blue-200 border-b border-blue-700/50">
+                  {t.headers.map((h, i) => (
+                    <th key={i} className="px-2 py-1 font-semibold">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {t.rows.map((row, rIdx) => (
+                  <tr key={rIdx} className="border-b border-slate-800 hover:bg-slate-800/50">
+                    {row.map((cell, cIdx) => (
+                      <td key={cIdx} className="px-2 py-1 text-slate-300 font-mono">{cell}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-slate-100/70 p-4 select-none">
@@ -570,6 +806,107 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
                 </div>
               );
             })}
+
+              {/* Render Active Element Clips (Shape, Frame, Chart, Sheet, Table) with 8-Handle Symmetrical Scaling */}
+              {activeElementClips.map((clip) => {
+                const isElementSelected = selectedClipId === clip.id;
+                const scale = clip.transform?.scale || 1.0;
+                const posX = clip.transform?.x || 0;
+                const posY = clip.transform?.y || 0;
+
+                return (
+                  <div
+                    key={clip.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectClip(clip.id);
+                    }}
+                    style={{
+                      transform: `translate(${posX}px, ${posY}px) scale(${scale})`,
+                      transformOrigin: 'center center',
+                    }}
+                    className="absolute w-44 h-44 cursor-pointer flex items-center justify-center select-none z-20 group/element"
+                  >
+                    {/* Element Inner Graphic */}
+                    <div className="w-full h-full relative flex items-center justify-center">
+                      {renderElementContent(clip)}
+                    </div>
+
+                    {/* 8-Handle Symmetrical Transform Bounding Box for Elements */}
+                    {isElementSelected && (
+                      <div 
+                        onMouseDown={(e) => handleTransformStart(e, clip, 'move')}
+                        title="คลิกค้างเพื่อเลื่อนตำแหน่ง • ลากหมากทั้ง 8 จุดเพื่อยืดขยาย"
+                        className="absolute -inset-1 border-2 border-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.6)] pointer-events-auto cursor-move z-30"
+                      >
+                        {/* Top-Left Handle (NW) */}
+                        <div
+                          onMouseDown={(e) => handleTransformStart(e, clip, 'nw')}
+                          title="ลากเพื่อยืด/ขยาย (NW)"
+                          className="absolute -top-2 -left-2 w-3.5 h-3.5 bg-white border-2 border-amber-500 rounded-xs shadow-md cursor-nwse-resize hover:scale-125 transition-transform"
+                        />
+                        {/* Top-Center Handle (N) */}
+                        <div
+                          onMouseDown={(e) => handleTransformStart(e, clip, 'n')}
+                          title="ลากเพื่อยืด/ขยาย (Top)"
+                          className="absolute -top-2 left-1/2 -translate-x-1/2 w-3.5 h-3.5 bg-white border-2 border-amber-500 rounded-xs shadow-md cursor-ns-resize hover:scale-125 transition-transform"
+                        />
+                        {/* Top-Right Handle (NE) */}
+                        <div
+                          onMouseDown={(e) => handleTransformStart(e, clip, 'ne')}
+                          title="ลากเพื่อยืด/ขยาย (NE)"
+                          className="absolute -top-2 -right-2 w-3.5 h-3.5 bg-white border-2 border-amber-500 rounded-xs shadow-md cursor-nesw-resize hover:scale-125 transition-transform"
+                        />
+                        {/* Right-Center Handle (E) */}
+                        <div
+                          onMouseDown={(e) => handleTransformStart(e, clip, 'e')}
+                          title="ลากเพื่อยืด/ขยาย (Right)"
+                          className="absolute top-1/2 -translate-y-1/2 -right-2 w-3.5 h-3.5 bg-white border-2 border-amber-500 rounded-xs shadow-md cursor-ew-resize hover:scale-125 transition-transform"
+                        />
+                        {/* Bottom-Right Handle (SE) */}
+                        <div
+                          onMouseDown={(e) => handleTransformStart(e, clip, 'se')}
+                          title="ลากเพื่อยืด/ขยาย (SE)"
+                          className="absolute -bottom-2 -right-2 w-3.5 h-3.5 bg-white border-2 border-amber-500 rounded-xs shadow-md cursor-nwse-resize hover:scale-125 transition-transform"
+                        />
+                        {/* Bottom-Center Handle (S) */}
+                        <div
+                          onMouseDown={(e) => handleTransformStart(e, clip, 's')}
+                          title="ลากเพื่อยืด/ขยาย (Bottom)"
+                          className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-3.5 h-3.5 bg-white border-2 border-amber-500 rounded-xs shadow-md cursor-ns-resize hover:scale-125 transition-transform"
+                        />
+                        {/* Bottom-Left Handle (SW) */}
+                        <div
+                          onMouseDown={(e) => handleTransformStart(e, clip, 'sw')}
+                          title="ลากเพื่อยืด/ขยาย (SW)"
+                          className="absolute -bottom-2 -left-2 w-3.5 h-3.5 bg-white border-2 border-amber-500 rounded-xs shadow-md cursor-nesw-resize hover:scale-125 transition-transform"
+                        />
+                        {/* Left-Center Handle (W) */}
+                        <div
+                          onMouseDown={(e) => handleTransformStart(e, clip, 'w')}
+                          title="ลากเพื่อยืด/ขยาย (Left)"
+                          className="absolute top-1/2 -translate-y-1/2 -left-2 w-3.5 h-3.5 bg-white border-2 border-amber-500 rounded-xs shadow-md cursor-ew-resize hover:scale-125 transition-transform"
+                        />
+
+                        {/* Floating Scale Badge & 1-Click Reset */}
+                        <div 
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute -top-7 left-1/2 -translate-x-1/2 px-2 py-0.2 bg-slate-950/90 text-amber-300 font-mono text-[10px] rounded-full border border-amber-500/50 shadow flex items-center gap-1.5 pointer-events-auto"
+                        >
+                          <span>{Math.round(scale * 100)}%</span>
+                          <button
+                            onClick={(e) => handleResetTransform(e, clip)}
+                            title="รีเซ็ตขนาดและตำแหน่งกลับสู่ค่าเริ่มต้น"
+                            className="text-slate-400 hover:text-white hover:bg-slate-800 p-0.5 rounded transition"
+                          >
+                            <RotateCcw className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
 
             {/* Central Play/Pause Watermark with Mouse Hover Fade-in Detection */}
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">

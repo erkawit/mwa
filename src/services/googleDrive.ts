@@ -229,6 +229,11 @@ class GoogleDriveService {
         audio: 'bg-emerald-600',
         image: 'bg-amber-600',
         text: 'bg-purple-600',
+        shape: 'bg-emerald-600',
+        frame: 'bg-cyan-600',
+        chart: 'bg-indigo-600',
+        sheet: 'bg-teal-600',
+        table: 'bg-violet-600',
       };
 
       const asset: MediaAsset = {

@@ -27,7 +27,8 @@ import type {
   SavedProject,
   TransitionType,
   MotionAnimation,
-  ClipTransform
+  ClipTransform,
+  ElementConfig
 } from './types';
 import { AppSwal, alertSuccess, alertError } from './utils/swal';
 import { getSystemLocalFonts } from './utils/fontManager';
@@ -901,6 +902,34 @@ export function App() {
     (c) => (c.type === 'video' || c.type === 'image') && currentTime >= c.startTime && currentTime <= c.startTime + c.duration
   );
 
+  // Active element clips (Shape, Frame, Chart, Sheet, Table) at currentTime
+  const activeElementClips = clips.filter(
+    (c) => ['shape', 'frame', 'chart', 'sheet', 'table'].includes(c.type) && currentTime >= c.startTime && currentTime <= c.startTime + c.duration
+  );
+
+  const handleAddElementClip = (elementConfig: ElementConfig, name: string) => {
+    let targetTrack = tracks.find((t) => t.id === focusedTrackId);
+    if (!targetTrack) {
+      targetTrack = tracks[0];
+    }
+
+    const newClip: TimelineClip = {
+      id: `elem-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      name,
+      type: elementConfig.type,
+      trackId: targetTrack ? targetTrack.id : tracks[0].id,
+      startTime: parseFloat(currentTime.toFixed(2)),
+      duration: 5.0,
+      color: '#10B981',
+      elementConfig,
+      transform: { scale: 1.0, x: 0, y: 0 },
+    };
+
+    setClips((prev) => [...prev, newClip]);
+    setSelectedClipId(newClip.id);
+    alertSuccess('แทรกองค์ประกอบสำเร็จ', `เพิ่ม "${name}" ลงในไทม์ไลน์แล้ว`);
+  };
+
   // Motion and Transition Update Handlers
   const handleUpdateClipTransition = (clipId: string, transition: TransitionType) => {
     setClips((prev) =>
@@ -1032,6 +1061,7 @@ export function App() {
           onRemoveUploadTask={handleRemoveUploadTask}
           onRelinkAsset={(asset) => setRelinkTargetAsset(asset)}
           onAddTextClip={handleAddTextClip}
+          onAddElementClip={handleAddElementClip}
           onAddCustomFont={(font) => setCustomFonts((prev) => [...prev, font])}
           onUpdateClipEffect={handleSaveTextEffect}
           onUpdateClipTransition={handleUpdateClipTransition}
@@ -1047,6 +1077,7 @@ export function App() {
           activeAsset={activeAsset}
           activeTextClips={activeTextClips}
           activeVideoClips={activeVideoClips}
+          activeElementClips={activeElementClips}
           selectedClipId={selectedClipId}
           projectSettings={projectSettings}
           isPremium={isPremium}
