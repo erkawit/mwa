@@ -12,7 +12,7 @@ import {
   Minimize2, 
   ZoomIn
 } from 'lucide-react';
-import type { MediaAsset, ProjectSettings, TimelineClip } from '../types';
+import type { MediaAsset, ProjectSettings, TimelineClip, ClipTransform } from '../types';
 import { getTextEffectStyles } from '../utils/fontManager';
 
 interface MediaCanvasProps {
@@ -30,6 +30,7 @@ interface MediaCanvasProps {
   onSeek: (time: number) => void;
   onSelectClip: (clipId: string | null) => void;
   onEditTextClip: (clip: TimelineClip) => void;
+  onUpdateClipTransform?: (clipId: string, transform: ClipTransform) => void;
 }
 
 export const MediaCanvas: React.FC<MediaCanvasProps> = ({
@@ -47,6 +48,7 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
   onSeek,
   onSelectClip,
   onEditTextClip,
+  onUpdateClipTransform,
 }) => {
   const [volume, setVolume] = useState(80);
   const [isMuted, setIsMuted] = useState(false);
@@ -261,6 +263,70 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
     return { className: '', phase: 'idle' };
   };
 
+  const handleResetTransform = (e: React.MouseEvent, clip: TimelineClip) => {
+    e.stopPropagation();
+    if (onUpdateClipTransform) {
+      onUpdateClipTransform(clip.id, { scale: 1.0, x: 0, y: 0 });
+    }
+  };
+
+  const handleTransformStart = (
+    e: React.MouseEvent,
+    clip: TimelineClip,
+    handleType: 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'move'
+  ) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const initialTransform = clip.transform || { scale: 1.0, x: 0, y: 0 };
+    const container = canvasContainerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2 + initialTransform.x;
+    const centerY = rect.top + rect.height / 2 + initialTransform.y;
+    const initialDist = Math.max(30, Math.hypot(startX - centerX, startY - centerY));
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      moveEvent.preventDefault();
+      if (handleType === 'move') {
+        const deltaX = moveEvent.clientX - startX;
+        const deltaY = moveEvent.clientY - startY;
+        const newTransform: ClipTransform = {
+          ...initialTransform,
+          x: Math.round(initialTransform.x + deltaX),
+          y: Math.round(initialTransform.y + deltaY),
+        };
+        if (onUpdateClipTransform) {
+          onUpdateClipTransform(clip.id, newTransform);
+        }
+      } else {
+        // Symmetrical Scaling: calculate distance relative to center
+        const currentDist = Math.hypot(moveEvent.clientX - centerX, moveEvent.clientY - centerY);
+        const scaleMultiplier = currentDist / initialDist;
+        let newScale = parseFloat((initialTransform.scale * scaleMultiplier).toFixed(2));
+        newScale = Math.max(0.15, Math.min(4.0, newScale));
+
+        const newTransform: ClipTransform = {
+          ...initialTransform,
+          scale: newScale,
+        };
+        if (onUpdateClipTransform) {
+          onUpdateClipTransform(clip.id, newTransform);
+        }
+      }
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
   const primaryVideoAnim = getClipTimeBasedAnimation(activePrimaryVideoClip, currentTime);
 
   return (
@@ -306,7 +372,7 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
           style={{ transform: `scale(${previewScale / 100})` }}
           className={`${getAspectRatioClasses()} bg-slate-900 rounded-sm shadow-2xl relative flex items-center justify-center overflow-hidden border border-slate-700 transition-transform duration-100 group/canvas`}
         >
-          {/* Real Media Rendering Background with Selection Frame (Requirement 3) */}
+          {/* Real Media Rendering Background */}
           <div 
             onClick={(e) => {
               if (activePrimaryVideoClip) {
@@ -314,56 +380,143 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
                 onSelectClip(activePrimaryVideoClip.id);
               }
             }}
-            className={`absolute inset-0 bg-slate-900 flex items-center justify-center overflow-hidden cursor-pointer transition-all ${
-              isVideoSelected ? 'ring-2 ring-blue-500 ring-inset' : ''
-            }`}
+            className="absolute inset-0 bg-slate-900 flex items-center justify-center overflow-hidden cursor-pointer"
           >
             {/* Grid overlay */}
             <div className="absolute inset-0 opacity-10 bg-[linear-gradient(to_right,#808080_1px,transparent_1px),linear-gradient(to_bottom,#808080_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none"></div>
 
-            {/* Video playback with real-time time-based in/out motion & transitions */}
-            {currentMediaAsset?.type === 'video' && currentMediaAsset.blobUrl ? (
-              <video
-                ref={videoRef}
-                key={currentMediaAsset.id}
-                src={currentMediaAsset.blobUrl}
-                muted={isMuted}
-                playsInline
-                preload="auto"
-                style={primaryVideoAnim.style}
-                className={`w-full h-full object-contain ${primaryVideoAnim.className}`}
-                onLoadedMetadata={(e) => {
-                  const video = e.currentTarget;
-                  video.currentTime = targetVideoTime;
-                  if (isPlaying) {
-                    video.play().catch(() => {});
-                  }
-                }}
-              />
-            ) : currentMediaAsset?.type === 'image' && currentMediaAsset.blobUrl ? (
-              <img
-                key={currentMediaAsset.id}
-                src={currentMediaAsset.blobUrl}
-                alt={currentMediaAsset.name}
-                style={primaryVideoAnim.style}
-                className={`w-full h-full object-contain ${primaryVideoAnim.className}`}
-              />
-            ) : currentMediaAsset ? (
-              <div className="text-center p-6 z-10 space-y-3">
-                <div className="inline-flex p-3 rounded-md bg-white/10 backdrop-blur-md border border-white/20 text-blue-400">
-                  <Sparkles className="w-8 h-8 animate-pulse" />
+            {/* Media Container with Symmetrical Scaling & Position Transform */}
+            <div
+              style={{
+                transform: `translate(${activePrimaryVideoClip?.transform?.x || 0}px, ${activePrimaryVideoClip?.transform?.y || 0}px) scale(${activePrimaryVideoClip?.transform?.scale || 1})`,
+                transformOrigin: 'center center',
+              }}
+              className="w-full h-full relative flex items-center justify-center transition-transform duration-75"
+            >
+              {/* Video playback with real-time time-based in/out motion & transitions */}
+              {currentMediaAsset?.type === 'video' && currentMediaAsset.blobUrl ? (
+                <video
+                  ref={videoRef}
+                  key={currentMediaAsset.id}
+                  src={currentMediaAsset.blobUrl}
+                  muted={isMuted}
+                  playsInline
+                  preload="auto"
+                  style={primaryVideoAnim.style}
+                  className={`w-full h-full object-contain ${primaryVideoAnim.className}`}
+                  onLoadedMetadata={(e) => {
+                    const video = e.currentTarget;
+                    video.currentTime = targetVideoTime;
+                    if (isPlaying) {
+                      video.play().catch(() => {});
+                    }
+                  }}
+                />
+              ) : currentMediaAsset?.type === 'image' && currentMediaAsset.blobUrl ? (
+                <img
+                  key={currentMediaAsset.id}
+                  src={currentMediaAsset.blobUrl}
+                  alt={currentMediaAsset.name}
+                  style={primaryVideoAnim.style}
+                  className={`w-full h-full object-contain ${primaryVideoAnim.className}`}
+                />
+              ) : currentMediaAsset ? (
+                <div className="text-center p-6 z-10 space-y-3">
+                  <div className="inline-flex p-3 rounded-md bg-white/10 backdrop-blur-md border border-white/20 text-blue-400">
+                    <Sparkles className="w-8 h-8 animate-pulse" />
+                  </div>
+                  <div className="text-white font-medium text-sm drop-shadow">{currentMediaAsset.name}</div>
+                  <div className="text-slate-400 text-xs font-mono">
+                    Time: {currentTime.toFixed(1)}s / {totalDuration.toFixed(1)}s
+                  </div>
                 </div>
-                <div className="text-white font-medium text-sm drop-shadow">{currentMediaAsset.name}</div>
-                <div className="text-slate-400 text-xs font-mono">
-                  Time: {currentTime.toFixed(1)}s / {totalDuration.toFixed(1)}s
+              ) : (
+                <div className="space-y-2 text-slate-500 text-center">
+                  <FilmIconFallback />
+                  <p className="text-xs font-medium text-slate-400">เลือกไฟล์จากคลังสื่อหรือไทม์ไลน์เพื่อเล่นตัวอย่าง</p>
                 </div>
-              </div>
-            ) : (
-              <div className="space-y-2 text-slate-500 text-center">
-                <FilmIconFallback />
-                <p className="text-xs font-medium text-slate-400">เลือกไฟล์จากคลังสื่อหรือไทม์ไลน์เพื่อเล่นตัวอย่าง</p>
-              </div>
-            )}
+              )}
+
+              {/* Selection Bounding Box with 8 Symmetrical Transform Handles */}
+              {isVideoSelected && activePrimaryVideoClip && (
+                <div 
+                  onMouseDown={(e) => handleTransformStart(e, activePrimaryVideoClip, 'move')}
+                  title="คลิกค้างเพื่อเลื่อนตำแหน่งสื่อ • ลากหมากทั้ง 8 จุดเพื่อยืดขยายแบบสมมาตร"
+                  className="absolute inset-0 border-2 border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.6)] pointer-events-auto cursor-move z-30 group/box"
+                >
+                  {/* Top-Left Corner Handle (NW) */}
+                  <div
+                    onMouseDown={(e) => handleTransformStart(e, activePrimaryVideoClip, 'nw')}
+                    title="ลากเพื่อยืด/ขยายขนาดแบบสมมาตร (NW)"
+                    className="absolute -top-2 -left-2 w-4 h-4 bg-white border-2 border-cyan-500 rounded-xs shadow-md cursor-nwse-resize hover:scale-125 transition-transform"
+                  />
+
+                  {/* Top-Center Edge Handle (N) */}
+                  <div
+                    onMouseDown={(e) => handleTransformStart(e, activePrimaryVideoClip, 'n')}
+                    title="ลากเพื่อยืด/ขยายขนาดแบบสมมาตร (Top)"
+                    className="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white border-2 border-cyan-500 rounded-xs shadow-md cursor-ns-resize hover:scale-125 transition-transform"
+                  />
+
+                  {/* Top-Right Corner Handle (NE) */}
+                  <div
+                    onMouseDown={(e) => handleTransformStart(e, activePrimaryVideoClip, 'ne')}
+                    title="ลากเพื่อยืด/ขยายขนาดแบบสมมาตร (NE)"
+                    className="absolute -top-2 -right-2 w-4 h-4 bg-white border-2 border-cyan-500 rounded-xs shadow-md cursor-nesw-resize hover:scale-125 transition-transform"
+                  />
+
+                  {/* Right-Center Edge Handle (E) */}
+                  <div
+                    onMouseDown={(e) => handleTransformStart(e, activePrimaryVideoClip, 'e')}
+                    title="ลากเพื่อยืด/ขยายขนาดแบบสมมาตร (Right)"
+                    className="absolute top-1/2 -translate-y-1/2 -right-2 w-4 h-4 bg-white border-2 border-cyan-500 rounded-xs shadow-md cursor-ew-resize hover:scale-125 transition-transform"
+                  />
+
+                  {/* Bottom-Right Corner Handle (SE) */}
+                  <div
+                    onMouseDown={(e) => handleTransformStart(e, activePrimaryVideoClip, 'se')}
+                    title="ลากเพื่อยืด/ขยายขนาดแบบสมมาตร (SE)"
+                    className="absolute -bottom-2 -right-2 w-4 h-4 bg-white border-2 border-cyan-500 rounded-xs shadow-md cursor-nwse-resize hover:scale-125 transition-transform"
+                  />
+
+                  {/* Bottom-Center Edge Handle (S) */}
+                  <div
+                    onMouseDown={(e) => handleTransformStart(e, activePrimaryVideoClip, 's')}
+                    title="ลากเพื่อยืด/ขยายขนาดแบบสมมาตร (Bottom)"
+                    className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white border-2 border-cyan-500 rounded-xs shadow-md cursor-ns-resize hover:scale-125 transition-transform"
+                  />
+
+                  {/* Bottom-Left Corner Handle (SW) */}
+                  <div
+                    onMouseDown={(e) => handleTransformStart(e, activePrimaryVideoClip, 'sw')}
+                    title="ลากเพื่อยืด/ขยายขนาดแบบสมมาตร (SW)"
+                    className="absolute -bottom-2 -left-2 w-4 h-4 bg-white border-2 border-cyan-500 rounded-xs shadow-md cursor-nesw-resize hover:scale-125 transition-transform"
+                  />
+
+                  {/* Left-Center Edge Handle (W) */}
+                  <div
+                    onMouseDown={(e) => handleTransformStart(e, activePrimaryVideoClip, 'w')}
+                    title="ลากเพื่อยืด/ขยายขนาดแบบสมมาตร (Left)"
+                    className="absolute top-1/2 -translate-y-1/2 -left-2 w-4 h-4 bg-white border-2 border-cyan-500 rounded-xs shadow-md cursor-ew-resize hover:scale-125 transition-transform"
+                  />
+
+                  {/* Center Floating Scale Info & 1-Click Reset Control */}
+                  <div 
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute -top-8 left-1/2 -translate-x-1/2 px-2.5 py-0.5 bg-slate-950/90 text-cyan-300 font-mono text-[11px] font-bold rounded-full border border-cyan-500/50 shadow-xl flex items-center gap-2 pointer-events-auto"
+                  >
+                    <span>{Math.round((activePrimaryVideoClip.transform?.scale || 1.0) * 100)}%</span>
+                    <button
+                      onClick={(e) => handleResetTransform(e, activePrimaryVideoClip)}
+                      title="รีเซ็ตขนาดและตำแหน่งกลับสู่ค่าเริ่มต้น (100% Center)"
+                      className="text-slate-400 hover:text-white hover:bg-slate-800 p-0.5 rounded transition"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Active Selection Badge on Canvas */}
             {isVideoSelected && (

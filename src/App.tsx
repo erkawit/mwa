@@ -26,7 +26,8 @@ import type {
   UserSession,
   SavedProject,
   TransitionType,
-  MotionAnimation
+  MotionAnimation,
+  ClipTransform
 } from './types';
 import { AppSwal, alertSuccess, alertError } from './utils/swal';
 import { getSystemLocalFonts } from './utils/fontManager';
@@ -913,6 +914,12 @@ export function App() {
     );
   };
 
+  const handleUpdateClipTransform = (clipId: string, transform: ClipTransform) => {
+    setClips((prev) =>
+      prev.map((c) => (c.id === clipId ? { ...c, transform } : c))
+    );
+  };
+
   // Unified Bidirectional Selection Sync
   const handleSelectClipSync = (clipId: string | null) => {
     setSelectedClipId(clipId);
@@ -1047,6 +1054,7 @@ export function App() {
           onSeek={handleSeek}
           onSelectClip={handleSelectClipSync}
           onEditTextClip={setEditingTextClip}
+          onUpdateClipTransform={handleUpdateClipTransform}
         />
 
         {/* Right: Inspector Properties & Effect Panel */}

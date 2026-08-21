@@ -178,6 +178,12 @@ export interface VideoSettings {
   filterPreset: 'Normal' | 'Cinematic' | 'Vibrant' | 'Monochrome' | 'Vintage' | 'Cool';
 }
 
+export interface ClipTransform {
+  scale: number; // 1.0 = 100%
+  x: number;     // X offset in pixels
+  y: number;     // Y offset in pixels
+}
+
 export interface TimelineClip {
   id: string;
   assetId?: string;
@@ -191,6 +197,7 @@ export interface TimelineClip {
   isMissing?: boolean;
   transition?: TransitionType;
   motion?: MotionAnimation;
+  transform?: ClipTransform;
   textContent?: string;
   textEffect?: TextEffectConfig;
   audioSettings?: AudioSettings;

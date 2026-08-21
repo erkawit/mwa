@@ -158,7 +158,15 @@ export async function renderProjectOnClient(options: RenderExportOptions): Promi
 
     for (const clip of activeVisualClips) {
       ctx.save();
-      // Draw Placeholder or Image
+      const scale = clip.transform?.scale || 1.0;
+      const offsetX = (clip.transform?.x || 0) * (width / 1280);
+      const offsetY = (clip.transform?.y || 0) * (height / 720);
+
+      ctx.translate(width / 2 + offsetX, height / 2 + offsetY);
+      ctx.scale(scale, scale);
+      ctx.translate(-width / 2, -height / 2);
+
+      // Draw Media Box Frame
       const boxW = width * 0.75;
       const boxH = height * 0.75;
       const boxX = (width - boxW) / 2;
