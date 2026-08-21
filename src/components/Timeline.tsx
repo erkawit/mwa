@@ -491,8 +491,13 @@ export const Timeline: React.FC<TimelineProps> = ({
           </button>
         </div>
 
-        {/* Zoom Controls */}
+        {/* Zoom Controls & Local Engine Hardware Badge */}
         <div className="flex items-center gap-2">
+          <div className="hidden md:flex items-center gap-1 px-2 py-0.5 bg-emerald-50 border border-emerald-200 rounded text-[10px] font-medium text-emerald-800 shadow-2xs" title="การตัดต่อทั้งหมดประมวลผลบนการ์ดจอและ CPU ของเครื่อง 100% ปราศจากการโหลดเซิร์ฟเวอร์">
+            <Zap className="w-3 h-3 text-emerald-600 fill-emerald-600" />
+            <span>Local Engine (Zero Server Load)</span>
+          </div>
+
           <button 
             onClick={() => setZoom(Math.max(15, zoom - 10))}
             title="ย่อมุมมองไทม์ไลน์ (Zoom Out)"

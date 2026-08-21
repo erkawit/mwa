@@ -28,11 +28,12 @@ import type {
   TransitionType,
   MotionAnimation
 } from './types';
-import { AppSwal, alertSuccess } from './utils/swal';
+import { AppSwal, alertSuccess, alertError } from './utils/swal';
 import { getSystemLocalFonts } from './utils/fontManager';
 import { googleDriveService } from './services/googleDrive';
 import { authService } from './services/auth';
 import { adminService } from './services/adminService';
+import { renderProjectOnClient } from './utils/localRenderer';
 
 // Initial Project Settings with 2K Option
 const initialSettings: ProjectSettings = {
@@ -568,52 +569,86 @@ export function App() {
     });
 
     if (exportConfig) {
-      let progress = 0;
       AppSwal.fire({
-        title: 'กำลังเรนเดอร์ไฟล์...',
+        title: '⚡ กำลังเรนเดอร์บนฮาร์ดแวร์เครื่อง (Client GPU)...',
         html: `
           <div class="space-y-3 pt-2 font-sans">
-            <p class="text-xs text-slate-600 font-doc">ระบบกำลังประมวลผล Timeline, Subtitles และ Effects เข้าด้วยกัน</p>
+            <p id="export-stage-text" class="text-xs text-slate-600 font-doc">กำลังประมวลผลแทร็ก, วิดีโอ และข้อความด้วย GPU/CPU ของเครื่อง...</p>
             <div class="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
-              <div id="export-progress-bar" class="bg-blue-600 h-3 rounded-full transition-all duration-150" style="width: 0%"></div>
+              <div id="export-progress-bar" class="bg-blue-600 h-3 rounded-full transition-all duration-75" style="width: 0%"></div>
             </div>
-            <div id="export-progress-text" class="text-xs font-mono text-slate-700 font-semibold text-right">0%</div>
+            <div class="flex justify-between items-center text-[11px] font-mono text-slate-600">
+              <span id="export-frame-text">Frame 0 / 0</span>
+              <span id="export-progress-text" class="font-bold text-blue-600">0%</span>
+            </div>
+            <div class="p-2 bg-emerald-50 border border-emerald-200 rounded text-[10px] text-emerald-800 font-doc text-left">
+              🔒 <strong>100% Client-Side:</strong> ทำงานบนทรัพยากรเครื่องของคุณโดยตรง ปราศจากการโหลดเซิร์ฟเวอร์
+            </div>
           </div>
         `,
         allowOutsideClick: false,
         showConfirmButton: false,
-        didOpen: () => {
-          const interval = setInterval(async () => {
-            progress += 20;
-            const bar = document.getElementById('export-progress-bar');
-            const text = document.getElementById('export-progress-text');
-            if (bar && text) {
-              bar.style.width = `${Math.min(100, progress)}%`;
-              text.innerText = `${Math.min(100, progress)}%`;
-            }
-            if (progress >= 100) {
-              clearInterval(interval);
+        didOpen: async () => {
+          try {
+            const format = exportConfig.fmt.startsWith('MP4') ? 'mp4' : 'webm';
+            const quality = exportConfig.quality as 'Best' | 'Standard' | 'Fast';
 
-              const fileName = `${projectSettings.name}.${exportConfig.fmt.startsWith('MP4') ? 'mp4' : 'webm'}`;
-
-              if (exportConfig.dest === 'gdrive') {
-                try {
-                  const dummyBlob = new Blob(['Multimedia Project Video Stream'], { type: 'video/mp4' });
-                  const uploaded = await googleDriveService.uploadToDrive(fileName, dummyBlob, 'video/mp4');
-                  alertSuccess(
-                    'บันทึกลง Google Drive สำเร็จ!',
-                    `ไฟล์ "${fileName}" ถูกอัปโหลดขึ้น Google Drive เรียบร้อยแล้ว${
-                      uploaded.webViewLink ? ` (Link: ${uploaded.webViewLink})` : ''
-                    }`
-                  );
-                } catch (err: any) {
-                  alertSuccess('ส่งออกไฟล์งานสำเร็จ!', `ไฟล์ "${fileName}" พร้อมใช้งานแล้ว (ดาวน์โหลดลงเครื่อง)`);
-                }
-              } else {
-                alertSuccess('ส่งออกไฟล์งานสำเร็จ!', `ไฟล์ "${fileName}" พร้อมใช้งานแล้ว`);
+            const outputBlob = await renderProjectOnClient({
+              projectSettings,
+              assets,
+              clips,
+              tracks,
+              totalDuration: Math.max(1, totalDuration),
+              format,
+              quality,
+              onProgress: (prog) => {
+                const bar = document.getElementById('export-progress-bar');
+                const pText = document.getElementById('export-progress-text');
+                const fText = document.getElementById('export-frame-text');
+                const sText = document.getElementById('export-stage-text');
+                if (bar) bar.style.width = `${prog.progress}%`;
+                if (pText) pText.innerText = `${prog.progress}%`;
+                if (fText) fText.innerText = `Frame ${prog.currentFrame} / ${prog.totalFrames}`;
+                if (sText) sText.innerText = prog.stage;
               }
+            });
+
+            AppSwal.close();
+
+            const cleanName = (projectSettings.name || 'project').replace(/[^\wก-๙-]/g, '_');
+            const fileName = `${cleanName}.${format}`;
+
+            if (exportConfig.dest === 'gdrive') {
+              try {
+                const uploaded = await googleDriveService.uploadToDrive(fileName, outputBlob, outputBlob.type);
+                alertSuccess(
+                  'บันทึกลง Google Drive สำเร็จ!',
+                  `ไฟล์ "${fileName}" ถูกอัปโหลดขึ้น Google Drive เรียบร้อยแล้ว${
+                    uploaded.webViewLink ? ` (Link: ${uploaded.webViewLink})` : ''
+                  }`
+                );
+              } catch (err: any) {
+                const url = URL.createObjectURL(outputBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                a.click();
+                setTimeout(() => URL.revokeObjectURL(url), 10000);
+                alertSuccess('ส่งออกไฟล์งานสำเร็จ!', `ไฟล์ "${fileName}" เรนเดอร์บนเครื่องเสร็จสมบูรณ์และดาวน์โหลดแล้ว`);
+              }
+            } else {
+              const url = URL.createObjectURL(outputBlob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = fileName;
+              a.click();
+              setTimeout(() => URL.revokeObjectURL(url), 10000);
+              alertSuccess('ส่งออกไฟล์งานสำเร็จ!', `ไฟล์ "${fileName}" เรนเดอร์บนเครื่องเสร็จสมบูรณ์และดาวน์โหลดแล้ว`);
             }
-          }, 180);
+          } catch (err: any) {
+            AppSwal.close();
+            alertError('เกิดข้อผิดพลาดในการเรนเดอร์', err?.message || 'ไม่สามารถประมวลผลวิดีโอบนเครื่องได้');
+          }
         }
       });
     }
