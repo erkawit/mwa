@@ -8,11 +8,14 @@ import {
   VolumeX, 
   Lock, 
   Unlock, 
-  Plus,
-  Type,
-  Sparkles,
-  Zap,
-  Link2
+  Plus, 
+  Type, 
+  Sparkles, 
+  Zap, 
+  Link2,
+  Copy,
+  CopyPlus,
+  ClipboardPaste
 } from 'lucide-react';
 import type { TimelineClip, TimelineTrack, MediaType, TransitionType, MediaAsset } from '../types';
 import { AppSwal, alertConfirm } from '../utils/swal';
@@ -25,6 +28,7 @@ interface TimelineProps {
   selectedClipId: string | null;
   focusedTrackId: string | null;
   timelineHeight: number;
+  copiedClip?: TimelineClip | null;
   onHeightChange: (height: number) => void;
   onSeek: (time: number) => void;
   onSelectClip: (clipId: string | null) => void;
@@ -43,6 +47,9 @@ interface TimelineProps {
   onReplaceClipMedia?: (clipId: string, file: File) => void;
   onUpdateClipTransition?: (clipId: string, transition: TransitionType) => void;
   onDropAssetToTrack?: (asset: MediaAsset, trackId: string, startTime: number) => void;
+  onCopyClip?: (clipId: string) => void;
+  onPasteClip?: (targetTrackId?: string, targetStartTime?: number) => void;
+  onDuplicateClip?: (clipId: string) => void;
 }
 
 interface SnapTarget {
@@ -60,6 +67,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   selectedClipId,
   focusedTrackId,
   timelineHeight,
+  copiedClip,
   onHeightChange,
   onSeek,
   onSelectClip,
@@ -78,6 +86,9 @@ export const Timeline: React.FC<TimelineProps> = ({
   onReplaceClipMedia,
   onUpdateClipTransition,
   onDropAssetToTrack,
+  onCopyClip,
+  onPasteClip,
+  onDuplicateClip,
 }) => {
   const [zoom, setZoom] = useState(40); // Pixels per second
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -876,6 +887,93 @@ export const Timeline: React.FC<TimelineProps> = ({
                             <span className="text-[10px] opacity-75 font-mono shrink-0 pl-0.5">
                               {clip.duration.toFixed(1)}s
                             </span>
+                          </div>
+
+                          {/* Floating Quick Action Menu on Clip Hover (สัญลักษณ์เมนูลอยเมื่อเมาส์ชี้) */}
+                          <div 
+                            onClick={(e) => e.stopPropagation()}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            className="absolute -top-7.5 left-1/2 -translate-x-1/2 hidden group-hover/clip:flex items-center gap-0.5 px-1 py-0.5 bg-slate-900/95 text-white rounded shadow-xl backdrop-blur-md border border-slate-700/80 z-50 animate-in fade-in zoom-in-95 duration-100"
+                          >
+                            {/* 1. Duplicate (ทำสำเนา) */}
+                            {onDuplicateClip && (
+                              <button
+                                onClick={() => onDuplicateClip(clip.id)}
+                                title="ทำสำเนา (Duplicate) - คัดลอกและแทรกลงต่อท้ายคลิปนี้ทันที"
+                                className="p-1 hover:bg-slate-700 text-slate-200 hover:text-white rounded transition"
+                              >
+                                <CopyPlus className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
+                            {/* 2. Copy (คัดลอก) */}
+                            {onCopyClip && (
+                              <button
+                                onClick={() => onCopyClip(clip.id)}
+                                title="คัดลอก (Copy - Ctrl+C)"
+                                className="p-1 hover:bg-slate-700 text-slate-200 hover:text-white rounded transition"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
+                            {/* 3. Paste (วาง - ปรากฏเมื่อมีคลิปในคลิปบอร์ด) */}
+                            {copiedClip && onPasteClip && (
+                              <button
+                                onClick={() => onPasteClip(track.id, clip.startTime + clip.duration)}
+                                title={`วาง "${copiedClip.name}" ต่อท้ายคลิปนี้ (Paste - Ctrl+V)`}
+                                className="p-1 hover:bg-emerald-800 text-emerald-400 hover:text-emerald-200 rounded transition"
+                              >
+                                <ClipboardPaste className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
+                            <div className="w-[1px] h-3 bg-slate-700 mx-0.5"></div>
+
+                            {/* 4. Contextual Actions based on Media Type */}
+                            {isTextClip ? (
+                              <button
+                                onClick={() => onEditTextClip(clip)}
+                                title="แก้ไขข้อความ & Effect ตัวอักษร"
+                                className="p-1 hover:bg-purple-800 text-purple-300 hover:text-purple-100 rounded transition"
+                              >
+                                <Type className="w-3.5 h-3.5" />
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => handleOpenTransitionPicker(clip)}
+                                  title="ตั้งค่า Animation & Transition รอยต่อ"
+                                  className="p-1 hover:bg-indigo-800 text-indigo-300 hover:text-indigo-100 rounded transition"
+                                >
+                                  <Zap className="w-3.5 h-3.5" />
+                                </button>
+
+                                {onReplaceClipMedia && (
+                                  <button
+                                    onClick={() => {
+                                      setTargetReplacingClipId(clip.id);
+                                      fileInputRef.current?.click();
+                                    }}
+                                    title="สลับ / แทนที่ไฟล์สื่อ (Replace Media)"
+                                    className="p-1 hover:bg-cyan-800 text-cyan-300 hover:text-cyan-100 rounded transition"
+                                  >
+                                    <Link2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </>
+                            )}
+
+                            <div className="w-[1px] h-3 bg-slate-700 mx-0.5"></div>
+
+                            {/* 5. Delete (ลบ) */}
+                            <button
+                              onClick={() => onDeleteClip(clip.id)}
+                              title="ลบคลิปออกจาก Track Editor (Delete)"
+                              className="p-1 hover:bg-rose-800 text-rose-400 hover:text-rose-200 rounded transition"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
 
                           {/* Right Trim Handle (Requirement 8) */}

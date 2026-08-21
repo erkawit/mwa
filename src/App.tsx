@@ -110,6 +110,7 @@ export function App() {
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [focusedTrackId, setFocusedTrackId] = useState<string | null>('trk-video');
   const [editingTextClip, setEditingTextClip] = useState<TimelineClip | null>(null);
+  const [copiedClip, setCopiedClip] = useState<TimelineClip | null>(null);
 
   // Auto-Save Active Studio State so browser refresh retains all current work
   useEffect(() => {
@@ -242,7 +243,22 @@ export function App() {
         return;
       }
 
-      if (e.code === 'Space') {
+      if ((e.ctrlKey || e.metaKey) && e.code === 'KeyC') {
+        if (selectedClipId) {
+          e.preventDefault();
+          handleCopyClip(selectedClipId);
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyV') {
+        if (copiedClip) {
+          e.preventDefault();
+          handlePasteClip();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyD') {
+        if (selectedClipId) {
+          e.preventDefault();
+          handleDuplicateClip(selectedClipId);
+        }
+      } else if (e.code === 'Space') {
         e.preventDefault();
         setIsPlaying((prev) => !prev);
       } else if (e.code === 'KeyS') {
@@ -266,7 +282,7 @@ export function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedClipId, currentTime, totalDuration, clips]);
+  }, [selectedClipId, currentTime, totalDuration, clips, copiedClip, focusedTrackId, tracks]);
 
   // Playback timer
   const animFrameRef = useRef<number | null>(null);
@@ -592,6 +608,46 @@ export function App() {
     if (selectedClipId === clipId) {
       setSelectedClipId(null);
     }
+  };
+
+  const handleCopyClip = (clipId: string) => {
+    const clip = clips.find((c) => c.id === clipId);
+    if (!clip) return;
+    setCopiedClip({ ...clip });
+    alertSuccess('คัดลอกคลิปสำเร็จ', `คัดลอก "${clip.textContent || clip.name}" ลงในคลิปบอร์ดแล้ว (กดปุ่มวาง หรือ Ctrl+V เพื่อแทรก)`);
+  };
+
+  const handleDuplicateClip = (clipId: string) => {
+    const clip = clips.find((c) => c.id === clipId);
+    if (!clip) return;
+
+    const newClip: TimelineClip = {
+      ...clip,
+      id: `clp-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      startTime: parseFloat((clip.startTime + clip.duration).toFixed(2)),
+    };
+
+    setClips((prev) => [...prev, newClip]);
+    setSelectedClipId(newClip.id);
+    alertSuccess('ทำสำเนาสำเร็จ', `สร้างสำเนา "${clip.textContent || clip.name}" ต่อท้ายเรียบร้อย`);
+  };
+
+  const handlePasteClip = (targetTrackId?: string, targetStartTime?: number) => {
+    if (!copiedClip) return;
+
+    const trackId = targetTrackId || focusedTrackId || tracks[0]?.id;
+    const startTime = targetStartTime !== undefined ? targetStartTime : currentTime;
+
+    const newClip: TimelineClip = {
+      ...copiedClip,
+      id: `clp-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      trackId,
+      startTime: parseFloat(startTime.toFixed(2)),
+    };
+
+    setClips((prev) => [...prev, newClip]);
+    setSelectedClipId(newClip.id);
+    alertSuccess('วางคลิปสำเร็จ', `วาง "${newClip.textContent || newClip.name}" ที่เวลา ${startTime.toFixed(1)}s เรียบร้อย`);
   };
 
   const handleRenameTrack = (trackId: string, newName: string) => {
@@ -1033,6 +1089,10 @@ export function App() {
         onReplaceClipMedia={handleReplaceClipMedia}
         onUpdateClipTransition={handleUpdateClipTransition}
         onDropAssetToTrack={handleDropAssetToTrack}
+        copiedClip={copiedClip}
+        onCopyClip={handleCopyClip}
+        onPasteClip={handlePasteClip}
+        onDuplicateClip={handleDuplicateClip}
       />
 
       {/* Text & Font Effects Editor Modal */}
