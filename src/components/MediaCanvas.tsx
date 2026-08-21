@@ -295,40 +295,48 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
     const canvasCenterX = rect.left + rect.width / 2;
     const canvasCenterY = rect.top + rect.height / 2;
 
-    // Requirement 2: Anchor calculation (Lock opposite corner in place during scaling)
-    const hw0 = (viewportWidth * initialTransform.scale) / 2;
-    const hh0 = (viewportHeight * initialTransform.scale) / 2;
+    // Dynamically calculate base dimensions (Full viewport for Video/Image, 176px for Elements)
+    const isFullCanvasMedia = clip.type === 'video' || clip.type === 'image';
+    const baseW = isFullCanvasMedia ? viewportWidth : 176;
+    const baseH = isFullCanvasMedia ? viewportHeight : 176;
 
-    let anchorX = centerX;
-    let anchorY = centerY;
+    // Half width & height of the bounding box at current initial scale
+    const hw0 = (baseW * initialTransform.scale) / 2;
+    const hh0 = (baseH * initialTransform.scale) / 2;
+
+    // Requirement 1 & 2: Fixed Opposite Anchor Point in screen client coordinates
+    // For Top-Left (NW) -> Bottom-Right (SE) is locked!
+    // For Bottom-Right (SE) -> Top-Left (NW) is locked!
+    let anchorScreenX = centerX;
+    let anchorScreenY = centerY;
 
     if (handleType === 'nw') {
-      anchorX = centerX + hw0;
-      anchorY = centerY + hh0;
+      anchorScreenX = centerX + hw0;
+      anchorScreenY = centerY + hh0;
     } else if (handleType === 'ne') {
-      anchorX = centerX - hw0;
-      anchorY = centerY + hh0;
+      anchorScreenX = centerX - hw0;
+      anchorScreenY = centerY + hh0;
     } else if (handleType === 'se') {
-      anchorX = centerX - hw0;
-      anchorY = centerY - hh0;
+      anchorScreenX = centerX - hw0;
+      anchorScreenY = centerY - hh0;
     } else if (handleType === 'sw') {
-      anchorX = centerX + hw0;
-      anchorY = centerY - hh0;
+      anchorScreenX = centerX + hw0;
+      anchorScreenY = centerY - hh0;
     } else if (handleType === 'n') {
-      anchorX = centerX;
-      anchorY = centerY + hh0;
+      anchorScreenX = centerX;
+      anchorScreenY = centerY + hh0;
     } else if (handleType === 's') {
-      anchorX = centerX;
-      anchorY = centerY - hh0;
+      anchorScreenX = centerX;
+      anchorScreenY = centerY - hh0;
     } else if (handleType === 'w') {
-      anchorX = centerX + hw0;
-      anchorY = centerY;
+      anchorScreenX = centerX + hw0;
+      anchorScreenY = centerY;
     } else if (handleType === 'e') {
-      anchorX = centerX - hw0;
-      anchorY = centerY;
+      anchorScreenX = centerX - hw0;
+      anchorScreenY = centerY;
     }
 
-    const initialV0Dist = Math.max(30, Math.hypot(startX - anchorX, startY - anchorY));
+    const initialDiagDist = Math.max(20, Math.hypot(startX - anchorScreenX, startY - anchorScreenY));
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       moveEvent.preventDefault();
@@ -339,10 +347,9 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
         let rawX = initialTransform.x + deltaX;
         let rawY = initialTransform.y + deltaY;
 
-        // Requirement 1: Canvas Boundary Locking on Move / Drag
-        // Prevents moving media outside visible canvas boundaries
-        const limitX = Math.max(20, (viewportWidth * 0.45));
-        const limitY = Math.max(20, (viewportHeight * 0.45));
+        // Requirement 1: Canvas Boundary Locking on Move / Drag (Media stays within canvas)
+        const limitX = Math.max(20, viewportWidth * 0.45);
+        const limitY = Math.max(20, viewportHeight * 0.45);
 
         const clampedX = Math.max(-limitX, Math.min(limitX, rawX));
         const clampedY = Math.max(-limitY, Math.min(limitY, rawY));
@@ -356,25 +363,48 @@ export const MediaCanvas: React.FC<MediaCanvasProps> = ({
           onUpdateClipTransform(clip.id, newTransform);
         }
       } else {
-        // Requirement 2: Anchor-Locked Scaling (Scale only the active handle, locking opposite point)
-        const currentV = Math.hypot(moveEvent.clientX - anchorX, moveEvent.clientY - anchorY);
-        const scaleFactor = Math.max(0.1, currentV / initialV0Dist);
+        // Requirement 2: Anchor-Locked Scaling (Opposite anchor point stays 100% stationary)
+        const currentDiagDist = Math.hypot(moveEvent.clientX - anchorScreenX, moveEvent.clientY - anchorScreenY);
+        const scaleFactor = Math.max(0.1, currentDiagDist / initialDiagDist);
 
         let newScale = parseFloat((initialTransform.scale * scaleFactor).toFixed(2));
         newScale = Math.max(0.15, Math.min(4.0, newScale));
 
-        // Calculate new center so the opposite anchor point remains stationary on the canvas
-        let newCenterX = (anchorX + moveEvent.clientX) / 2;
-        let newCenterY = (anchorY + moveEvent.clientY) / 2;
+        const newHw = (baseW * newScale) / 2;
+        const newHh = (baseH * newScale) / 2;
 
-        if (handleType === 'n' || handleType === 's') {
-          newCenterX = anchorX;
-        } else if (handleType === 'e' || handleType === 'w') {
-          newCenterY = anchorY;
+        let newCenterScreenX = centerX;
+        let newCenterScreenY = centerY;
+
+        // Reposition center strictly relative to the fixed opposite anchor point
+        if (handleType === 'nw') {
+          newCenterScreenX = anchorScreenX - newHw;
+          newCenterScreenY = anchorScreenY - newHh;
+        } else if (handleType === 'ne') {
+          newCenterScreenX = anchorScreenX + newHw;
+          newCenterScreenY = anchorScreenY - newHh;
+        } else if (handleType === 'se') {
+          newCenterScreenX = anchorScreenX + newHw;
+          newCenterScreenY = anchorScreenY + newHh;
+        } else if (handleType === 'sw') {
+          newCenterScreenX = anchorScreenX - newHw;
+          newCenterScreenY = anchorScreenY + newHh;
+        } else if (handleType === 'n') {
+          newCenterScreenX = anchorScreenX;
+          newCenterScreenY = anchorScreenY - newHh;
+        } else if (handleType === 's') {
+          newCenterScreenX = anchorScreenX;
+          newCenterScreenY = anchorScreenY + newHh;
+        } else if (handleType === 'w') {
+          newCenterScreenX = anchorScreenX - newHw;
+          newCenterScreenY = anchorScreenY;
+        } else if (handleType === 'e') {
+          newCenterScreenX = anchorScreenX + newHw;
+          newCenterScreenY = anchorScreenY;
         }
 
-        const newX = Math.round(newCenterX - canvasCenterX);
-        const newY = Math.round(newCenterY - canvasCenterY);
+        const newX = Math.round(newCenterScreenX - canvasCenterX);
+        const newY = Math.round(newCenterScreenY - canvasCenterY);
 
         const newTransform: ClipTransform = {
           scale: newScale,

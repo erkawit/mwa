@@ -927,7 +927,6 @@ export function App() {
 
     setClips((prev) => [...prev, newClip]);
     setSelectedClipId(newClip.id);
-    alertSuccess('แทรกองค์ประกอบสำเร็จ', `เพิ่ม "${name}" ลงในไทม์ไลน์แล้ว`);
   };
 
   // Motion and Transition Update Handlers
