@@ -1,8 +1,10 @@
 import { PDFDocument, rgb, StandardFonts, degrees as pdfDegrees } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
 
-// Set worker source for pdfjs-dist
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+// Set worker source for pdfjs-dist using reliable jsdelivr CDN with correct .mjs extension
+if (typeof window !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+}
 
 export async function loadPdf(data: ArrayBuffer): Promise<PDFDocument> {
   return await PDFDocument.load(data);
@@ -13,7 +15,11 @@ export function getPageCount(pdf: PDFDocument): number {
 }
 
 export async function renderPageToCanvas(pdfData: ArrayBuffer, pageIndex: number, canvas: HTMLCanvasElement, scale: number): Promise<void> {
-  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(pdfData) });
+  const loadingTask = pdfjsLib.getDocument({ 
+    data: new Uint8Array(pdfData),
+    cMapUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/cmaps/`,
+    cMapPacked: true,
+  });
   const pdf = await loadingTask.promise;
   const page = await pdf.getPage(pageIndex + 1); // pdfjs uses 1-based indexing
 
