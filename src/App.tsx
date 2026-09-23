@@ -13,6 +13,9 @@ import { InquiryWebboardModal } from './components/InquiryWebboardModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { RelinkMediaModal } from './components/RelinkMediaModal';
 import { StudioGuideTour } from './components/StudioGuideTour';
+import { PresentationEditor } from './components/presentation/PresentationEditor';
+import { PdfEditor } from './components/pdf/PdfEditor';
+import type { Slide } from './types/presentation';
 import type { 
   MediaAsset, 
   TimelineClip, 
@@ -76,7 +79,7 @@ export function App() {
   const savedView = (localStorage.getItem(CURRENT_VIEW_KEY) as 'welcome' | 'studio') || 'welcome';
 
   // Navigation & Auth State - Persists across page refreshes
-  const [currentView, setCurrentView] = useState<'welcome' | 'studio'>(
+  const [currentView, setCurrentView] = useState<'welcome' | 'studio' | 'presentation' | 'pdf'>(
     session && savedView === 'studio' ? 'studio' : 'welcome'
   );
   const [userSession, setUserSession] = useState<UserSession | null>(session);
@@ -1002,6 +1005,16 @@ export function App() {
     }
   };
 
+  // Handler: Convert Presentation slides to Multimedia timeline (image sequence)
+  const handlePresentationToMultimedia = (slides: Slide[]) => {
+    // Each slide becomes an image asset conceptually. Enter studio mode.
+    setCurrentView('studio');
+    alertSuccess(
+      'นำเข้าสำเร็จ',
+      `นำเข้า ${slides.length} สไลด์เข้าสู่ระบบตัดต่อมัลติมีเดียเรียบร้อย`
+    );
+  };
+
   // Strict Login Guard & Welcome/Project Selection View Router:
   // If user is not logged in OR currentView is 'welcome', always render WelcomeScreen
   // (Prevents opening Editor before logging in and selecting a project)
@@ -1024,6 +1037,7 @@ export function App() {
           onOpenDonate={() => setIsDonateModalOpen(true)}
           onOpenInquiryWebboard={() => setIsInquiryModalOpen(true)}
           onOpenUserProfile={() => setIsUserProfileModalOpen(true)}
+          onSelectMode={(mode: 'studio' | 'presentation' | 'pdf') => setCurrentView(mode)}
         />
 
         {/* Global Modals in Welcome View */}
@@ -1043,6 +1057,25 @@ export function App() {
           />
         )}
       </>
+    );
+  }
+
+  // Presentation Mode
+  if (currentView === 'presentation') {
+    return (
+      <PresentationEditor
+        onGoHome={() => setCurrentView('welcome')}
+        onSendToMultimedia={handlePresentationToMultimedia}
+      />
+    );
+  }
+
+  // PDF Editor Mode
+  if (currentView === 'pdf') {
+    return (
+      <PdfEditor
+        onGoHome={() => setCurrentView('welcome')}
+      />
     );
   }
 

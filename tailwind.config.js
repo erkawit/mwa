@@ -20,6 +20,12 @@ export default {
           danger: '#EF4444',   // red-500
           success: '#10B981',  // emerald-500
           warning: '#F59E0B',  // amber-500
+          // Presentation mode accent (purple)
+          presentation: '#7C3AED', // violet-600
+          presentationHover: '#6D28D9', // violet-700
+          // PDF editor mode accent (orange)
+          pdf: '#EA580C',      // orange-600
+          pdfHover: '#C2410C', // orange-700
         }
       },
       fontFamily: {

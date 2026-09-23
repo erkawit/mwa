@@ -20,7 +20,10 @@ import {
   Shield,
   MessageSquare,
   Heart,
-  Edit3
+  Edit3,
+  FileText,
+  Presentation,
+  Video
 } from 'lucide-react';
 import type { UserSession, SavedProject } from '../types';
 import { authService } from '../services/auth';
@@ -38,6 +41,7 @@ interface WelcomeScreenProps {
   onOpenDonate?: () => void;
   onOpenInquiryWebboard?: () => void;
   onOpenUserProfile?: () => void;
+  onSelectMode?: (mode: 'studio' | 'presentation' | 'pdf') => void;
 }
 
 export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
@@ -50,6 +54,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   onOpenDonate = () => {},
   onOpenInquiryWebboard = () => {},
   onOpenUserProfile = () => {},
+  onSelectMode = () => {},
 }) => {
   // Auth Mode State (Login vs Register)
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
@@ -459,20 +464,81 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
         <div className="lg:col-span-7 space-y-6 pr-0 lg:pr-6">
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 rounded border border-blue-200 text-xs font-medium">
             <Sparkles className="w-3.5 h-3.5" />
-            <span>ระบบสตูดิโอตัดต่อสื่อเว็บแอปพลิเคชันยุคใหม่</span>
+            <span>ระบบสตูดิโอสร้างสรรค์ผลงานยุคใหม่ — ครบจบในที่เดียว</span>
           </div>
 
           <div className="space-y-3">
             <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight leading-tight">
-              สร้างสรรค์ผลงานมัลติมีเดีย <br />
-              <span className="text-blue-600">รวดเร็ว คมชัด และสบายตาที่สุด</span>
+              สร้างสรรค์ผลงาน <br />
+              <span className="text-blue-600">ครบทุกรูปแบบในที่เดียว</span>
             </h1>
             <p className="text-sm text-slate-600 font-doc leading-relaxed max-w-xl">
-              ระบบตัดต่อและจัดการวิดีโอ เสียง รูปภาพ และไตเติ้ลบนเว็บเบราว์เซอร์ 
-              ออกแบบด้วยสถาปัตยกรรม <strong>Slate Palette</strong> เพื่อถนอมสายตา 
-              พร้อมเชื่อมต่อ Google Drive และเครื่องมือจัดวางแบบ Multi-Track ครบวงจร
+              ตัดต่อวิดีโอ สร้างงานนำเสนอ แก้ไขไฟล์ PDF — ทั้งหมดทำได้จากเว็บเบราว์เซอร์ 
+              ออกแบบด้วยสถาปัตยกรรม <strong>Slate Palette</strong> สบายตา สะอาดตา ใช้งานง่าย
             </p>
           </div>
+
+          {/* ===== 3-Mode Selection Cards (Canva-like) ===== */}
+          {userSession && (
+            <div className="space-y-3 pt-2">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">เลือกสิ่งที่ต้องการสร้าง</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Card 1: Multimedia Studio */}
+                <button
+                  onClick={() => onSelectMode('studio')}
+                  className="group relative flex flex-col items-center p-5 bg-white border-2 border-slate-200 rounded-md shadow-sm hover:border-blue-500 hover:shadow-md transition-all duration-200 text-center"
+                >
+                  <div className="w-12 h-12 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center mb-3 group-hover:bg-blue-100 transition">
+                    <Video className="w-6 h-6" />
+                  </div>
+                  <h4 className="text-sm font-semibold text-slate-900 group-hover:text-blue-700 transition">มัลติมีเดีย</h4>
+                  <p className="text-[11px] text-slate-500 font-doc mt-1 leading-relaxed">
+                    ตัดต่อวิดีโอ เสียง ภาพ<br />
+                    พร้อมไทม์ไลน์มัลติแทร็ก
+                  </p>
+                  <div className="mt-3 px-3 py-1 bg-blue-50 text-blue-700 rounded text-[10px] font-medium opacity-0 group-hover:opacity-100 transition">
+                    เริ่มตัดต่อ →
+                  </div>
+                </button>
+
+                {/* Card 2: Presentation */}
+                <button
+                  onClick={() => onSelectMode('presentation')}
+                  className="group relative flex flex-col items-center p-5 bg-white border-2 border-slate-200 rounded-md shadow-sm hover:border-purple-500 hover:shadow-md transition-all duration-200 text-center"
+                >
+                  <div className="w-12 h-12 rounded-md bg-purple-50 text-purple-600 flex items-center justify-center mb-3 group-hover:bg-purple-100 transition">
+                    <Presentation className="w-6 h-6" />
+                  </div>
+                  <h4 className="text-sm font-semibold text-slate-900 group-hover:text-purple-700 transition">งานนำเสนอ</h4>
+                  <p className="text-[11px] text-slate-500 font-doc mt-1 leading-relaxed">
+                    สร้างสไลด์แบบ Canva<br />
+                    นำไปตัดต่อต่อได้ทันที
+                  </p>
+                  <div className="mt-3 px-3 py-1 bg-purple-50 text-purple-700 rounded text-[10px] font-medium opacity-0 group-hover:opacity-100 transition">
+                    สร้างสไลด์ →
+                  </div>
+                </button>
+
+                {/* Card 3: PDF Editor */}
+                <button
+                  onClick={() => onSelectMode('pdf')}
+                  className="group relative flex flex-col items-center p-5 bg-white border-2 border-slate-200 rounded-md shadow-sm hover:border-orange-500 hover:shadow-md transition-all duration-200 text-center"
+                >
+                  <div className="w-12 h-12 rounded-md bg-orange-50 text-orange-600 flex items-center justify-center mb-3 group-hover:bg-orange-100 transition">
+                    <FileText className="w-6 h-6" />
+                  </div>
+                  <h4 className="text-sm font-semibold text-slate-900 group-hover:text-orange-700 transition">แก้ไข PDF</h4>
+                  <p className="text-[11px] text-slate-500 font-doc mt-1 leading-relaxed">
+                    แก้ข้อความ วาดเขียน ลายเซ็น<br />
+                    รวม แยก บีบอัด PDF
+                  </p>
+                  <div className="mt-3 px-3 py-1 bg-orange-50 text-orange-700 rounded text-[10px] font-medium opacity-0 group-hover:opacity-100 transition">
+                    เปิด PDF Editor →
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Feature Highlights Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
